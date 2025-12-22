@@ -1,62 +1,122 @@
-import { Application, Text, Graphics, TextStyle } from "pixi.js";
+import { Application, Container } from "pixi.js";
+import { createPlayer, setupPlayerMovement, PlayerPosition } from "./player";
+import { createMap, getTileSize } from "./map";
+import { createMinimap, updateMinimapPlayer } from "./minimap";
 
-// Create and initialize PixiJS application
+// Create and initialize PixiJS application with full screen
 const app = new Application();
 
 await app.init({
-  width: 800,
-  height: 600,
-  backgroundColor: 0x87ceeb, // Sky blue background
+  width: window.innerWidth,
+  height: window.innerHeight,
+  backgroundColor: 0x4a6741, // Darker, less shiny green background
+  resizeTo: window, // Automatically resize to window
+  antialias: true,
 });
 
 // Add the canvas to the DOM
 document.body.appendChild(app.canvas as HTMLCanvasElement);
 
-// Create text style for "Hello World!"
-const helloStyle = new TextStyle({
-  fontFamily: "Arial",
-  fontSize: 48,
-  fill: 0xffffff,
-  align: "center",
+// Handle window resize
+window.addEventListener("resize", () => {
+  app.renderer.resize(window.innerWidth, window.innerHeight);
+  // Update minimap position
+  minimap.x = window.innerWidth - 210; // MINIMAP_WIDTH + 10
+  minimap.y = 10;
 });
 
-// Add "Hello World!" text
-const helloText = new Text({
-  text: "Hello World!",
-  style: helloStyle,
-});
-helloText.anchor.set(0.5);
-helloText.x = app.screen.width / 2;
-helloText.y = app.screen.height / 2;
-app.stage.addChild(helloText);
+// Create a world container that will move (camera system)
+const world = new Container();
+app.stage.addChild(world);
 
-// Create text style for "Welcome to PixiJS"
-const welcomeStyle = new TextStyle({
-  fontFamily: "Arial",
-  fontSize: 24,
-  fill: 0xc8c8c8,
-  align: "center",
+// Create a larger map (bigger than screen)
+const tileSize = getTileSize();
+const mapWidth = 50; // Large map width in tiles
+const mapHeight = 50; // Large map height in tiles
+
+// Create the map with separate containers for grass and trees
+const { grassContainer, treesContainer, tiles } = createMap({
+  width: mapWidth,
+  height: mapHeight,
 });
 
-// Add "Welcome to PixiJS" text
-const welcomeText = new Text({
-  text: "Welcome to PixiJS",
-  style: welcomeStyle,
-});
-welcomeText.anchor.set(0.5);
-welcomeText.x = app.screen.width / 2;
-welcomeText.y = app.screen.height / 2 + 60;
-app.stage.addChild(welcomeText);
+// Add grass tiles first (bottom layer)
+world.addChild(grassContainer);
 
-// Add a simple animated box
-const box = new Graphics();
-box.rect(-50, -50, 100, 100);
-box.fill(0xffc800); // Yellow color
-box.x = app.screen.width / 2;
-box.y = app.screen.height / 2 + 120;
-app.stage.addChild(box);
+// Create and add the player (middle layer - behind trees, in front of grass)
+const player = createPlayer();
+world.addChild(player);
 
-// Simple rotation animation
+// Add trees last (top layer - in front of player)
+world.addChild(treesContainer);
+
+// Create minimap
+const minimap = createMinimap(tiles, mapWidth, mapHeight);
+app.stage.addChild(minimap);
+
+// Track player position for minimap
+let currentPlayerPosition: PlayerPosition = {
+  tileX: Math.floor(mapWidth / 2),
+  tileY: Math.floor(mapHeight / 2),
+};
+
+// Setup player movement with z/q/s/d keys (tile-based)
+setupPlayerMovement(
+  player,
+  app,
+  tileSize,
+  mapWidth,
+  mapHeight,
+  tiles,
+  (position) => {
+    currentPlayerPosition = position;
+    updateMinimapPlayer(
+      minimap,
+      position.tileX,
+      position.tileY,
+      mapWidth,
+      mapHeight
+    );
+  }
+);
+
+// Initialize minimap with player position
+updateMinimapPlayer(
+  minimap,
+  currentPlayerPosition.tileX,
+  currentPlayerPosition.tileY,
+  mapWidth,
+  mapHeight
+);
+
+// Camera system: keep player centered, move the world
+function updateCamera() {
+  // Use player's actual position (smooth movement)
+  const playerWorldX = player.x;
+  const playerWorldY = player.y;
+
+  // Move world so player is centered on screen
+  world.x = window.innerWidth / 2 - playerWorldX;
+  world.y = window.innerHeight / 2 - playerWorldY;
+
+  // Account for tree overflow (trees extend 40px radius beyond their center)
+  const treeOverflow = 40;
+  const mapPixelWidth = mapWidth * tileSize;
+  const mapPixelHeight = mapHeight * tileSize;
+
+  // Clamp camera to allow showing tree overflow
+  // Trees extend 40px beyond their center, so we need to allow showing that overflow
+  // The effective map bounds are: -treeOverflow to mapPixelWidth + treeOverflow
+  const minX = window.innerWidth - mapPixelWidth - treeOverflow;
+  const minY = window.innerHeight - mapPixelHeight - treeOverflow;
+  const maxX = treeOverflow;
+  const maxY = treeOverflow;
+
+  world.x = Math.max(minX, Math.min(maxX, world.x));
+  world.y = Math.max(minY, Math.min(maxY, world.y));
+}
+
+// Update camera every frame to follow player smoothly
 app.ticker.add(() => {
-  box.rotation += 0.01; // Rotate the box
+  updateCamera();
 });

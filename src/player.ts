@@ -1,37 +1,92 @@
-import { Graphics, Application } from "pixi.js";
+import { Graphics, Application, Container } from "pixi.js";
 import { TileData } from "./map";
+import { createWoodPiece } from "./wood";
 
 export interface PlayerPosition {
   tileX: number;
   tileY: number;
 }
 
-export function createPlayer(): Graphics {
-  // Create a simple player using Graphics
-  const player = new Graphics();
+export type PlayerDirection = "up" | "down" | "left" | "right";
 
-  // Draw a simple character (circle for head, rectangle for body)
-  player.circle(0, -15, 10);
-  player.fill(0xffdbac); // Skin color for head
+export interface PlayerContainer {
+  container: Container;
+  body: Graphics;
+  direction: PlayerDirection;
+}
 
-  player.rect(-8, 0, 16, 20);
-  player.fill(0x4169e1); // Blue for body
+export function createPlayer(): PlayerContainer {
+  // Create a container to hold player body and axe separately
+  const playerContainer = new Container();
+
+  // Create player body
+  const body = new Graphics();
+
+  // Draw body (rectangle)
+  body.rect(-8, 0, 16, 20);
+  body.fill(0x4169e1); // Blue for body
+
+  // Draw head (circle)
+  body.circle(0, -15, 10);
+  body.fill(0xffdbac); // Skin color for head
+
+  // Draw hair on top of head
+  body.circle(0, -22, 8);
+  body.fill(0x8b4513); // Brown hair
+
+  // Draw eyes (will be positioned based on direction)
+  // Default eyes looking down
+  body.circle(-3, -16, 2);
+  body.fill(0x000000); // Left eye
+  body.circle(3, -16, 2);
+  body.fill(0x000000); // Right eye
+
+  // Draw a small nose
+  body.circle(0, -13, 1.5);
+  body.fill(0xffdbac);
+
+  // Draw mouth
+  body.rect(-2, -11, 4, 1);
+  body.fill(0x000000);
+
+  // Draw arms
+  body.rect(-12, 2, 4, 8);
+  body.fill(0xffdbac); // Left arm
+  body.rect(8, 2, 4, 8);
+  body.fill(0xffdbac); // Right arm
+
+  // Draw legs
+  body.rect(-6, 18, 5, 8);
+  body.fill(0x2c3e50); // Dark blue pants - left leg
+  body.rect(1, 18, 5, 8);
+  body.fill(0x2c3e50); // Dark blue pants - right leg
+
+  // Add body to container
+  playerContainer.addChild(body);
 
   // Position player at center initially (will be set by tile position)
-  player.x = 0;
-  player.y = 0;
+  playerContainer.x = 0;
+  playerContainer.y = 0;
 
-  return player;
+  return {
+    container: playerContainer,
+    body,
+    direction: "down", // Default direction
+  };
 }
 
 export function setupPlayerMovement(
-  player: Graphics,
+  player: PlayerContainer,
   app: Application,
   tileSize: number,
   mapWidth: number,
   mapHeight: number,
   tiles: TileData[][],
-  onMove?: (position: PlayerPosition) => void
+  treesContainer: Container,
+  woodContainer: Container,
+  onMove?: (position: PlayerPosition) => void,
+  onCooldownUpdate?: (progress: number) => void,
+  onWoodCollected?: () => void
 ): PlayerPosition {
   let currentTileX = Math.floor(mapWidth / 2);
   let currentTileY = Math.floor(mapHeight / 2);
@@ -42,77 +97,142 @@ export function setupPlayerMovement(
   const moveSpeed = 8; // Pixels per frame
 
   // Set initial position (centered in tile)
-  player.x = targetX;
-  player.y = targetY;
+  player.container.x = targetX;
+  player.container.y = targetY;
+
+  // Initialize player direction
+  updatePlayerDirection(player);
 
   const keys: { [key: string]: boolean } = {};
-  let keyPressed = false;
 
-  // Track key states
+  // Track key states (allow holding keys)
   window.addEventListener("keydown", (e) => {
-    const key = e.key.toLowerCase();
-    if (!keys[key] && !isMoving) {
-      keys[key] = true;
-      keyPressed = true;
-    }
+    keys[e.key.toLowerCase()] = true;
   });
 
   window.addEventListener("keyup", (e) => {
     keys[e.key.toLowerCase()] = false;
   });
 
+  // Hit cooldown system
+  let hitCooldown = 0;
+  const hitCooldownDuration = 1.0; // 1 second cooldown
+  let canHit = true;
+
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space" && canHit && !isMoving) {
+      // Perform hit
+      checkTreeHit(
+        player,
+        currentTileX,
+        currentTileY,
+        tiles,
+        mapWidth,
+        mapHeight,
+        tileSize,
+        treesContainer,
+        woodContainer
+      );
+      // Start cooldown
+      hitCooldown = hitCooldownDuration;
+      canHit = false;
+      if (onCooldownUpdate) {
+        onCooldownUpdate(0); // Show cooldown bar
+      }
+    } else if (e.key.toLowerCase() === "c" && !isMoving) {
+      // Collect wood piece
+      checkWoodCollection(
+        player,
+        currentTileX,
+        currentTileY,
+        tiles,
+        mapWidth,
+        mapHeight,
+        woodContainer,
+        onWoodCollected
+      );
+    }
+  });
+
+  // Update cooldown
+  app.ticker.add(() => {
+    if (hitCooldown > 0) {
+      hitCooldown -= app.ticker.deltaMS / 1000; // Convert to seconds
+      if (hitCooldown <= 0) {
+        hitCooldown = 0;
+        canHit = true;
+        if (onCooldownUpdate) {
+          onCooldownUpdate(1); // Hide cooldown bar
+        }
+      } else {
+        // Update cooldown bar
+        const progress = 1 - hitCooldown / hitCooldownDuration;
+        if (onCooldownUpdate) {
+          onCooldownUpdate(progress);
+        }
+      }
+    }
+  });
+
   // Update player position based on keys (z/q/s/d for WASD in French layout)
   app.ticker.add(() => {
     if (isMoving) {
       // Smooth movement to target tile
-      const dx = targetX - player.x;
-      const dy = targetY - player.y;
+      const dx = targetX - player.container.x;
+      const dy = targetY - player.container.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
       if (distance < moveSpeed) {
         // Reached target
-        player.x = targetX;
-        player.y = targetY;
+        player.container.x = targetX;
+        player.container.y = targetY;
         isMoving = false;
         if (onMove) {
           onMove({ tileX: currentTileX, tileY: currentTileY });
         }
       } else {
         // Move towards target
-        player.x += (dx / distance) * moveSpeed;
-        player.y += (dy / distance) * moveSpeed;
+        player.container.x += (dx / distance) * moveSpeed;
+        player.container.y += (dy / distance) * moveSpeed;
       }
-    } else if (keyPressed) {
-      // Check for movement input
+    } else {
+      // Check for movement input (allow holding keys)
       let moved = false;
       let newTileX = currentTileX;
       let newTileY = currentTileY;
 
       if (keys["z"] || keys["w"]) {
         // Move up
+        player.direction = "up";
         if (currentTileY > 0) {
           newTileY = currentTileY - 1;
           moved = true;
         }
       } else if (keys["s"]) {
         // Move down
+        player.direction = "down";
         if (currentTileY < mapHeight - 1) {
           newTileY = currentTileY + 1;
           moved = true;
         }
       } else if (keys["q"] || keys["a"]) {
         // Move left
+        player.direction = "left";
         if (currentTileX > 0) {
           newTileX = currentTileX - 1;
           moved = true;
         }
       } else if (keys["d"]) {
         // Move right
+        player.direction = "right";
         if (currentTileX < mapWidth - 1) {
           newTileX = currentTileX + 1;
           moved = true;
         }
       }
+
+      // Update player sprite based on direction (even if movement blocked)
+      updatePlayerDirection(player);
 
       // Check for collision (can't walk through trees)
       if (moved) {
@@ -131,10 +251,262 @@ export function setupPlayerMovement(
         targetX = currentTileX * tileSize + tileSize / 2;
         targetY = currentTileY * tileSize + tileSize / 2;
         isMoving = true;
-        keyPressed = false;
       }
     }
   });
 
   return { tileX: currentTileX, tileY: currentTileY };
+}
+
+function checkTreeHit(
+  player: PlayerContainer,
+  playerTileX: number,
+  playerTileY: number,
+  tiles: TileData[][],
+  mapWidth: number,
+  mapHeight: number,
+  tileSize: number,
+  treesContainer: Container,
+  woodContainer: Container
+): void {
+  // Calculate target tile based on player direction
+  let targetTileX = playerTileX;
+  let targetTileY = playerTileY;
+
+  switch (player.direction) {
+    case "up":
+      targetTileY = playerTileY - 1;
+      break;
+    case "down":
+      targetTileY = playerTileY + 1;
+      break;
+    case "left":
+      targetTileX = playerTileX - 1;
+      break;
+    case "right":
+      targetTileX = playerTileX + 1;
+      break;
+  }
+
+  // Check if target tile is valid and contains a tree
+  if (
+    targetTileX >= 0 &&
+    targetTileX < mapWidth &&
+    targetTileY >= 0 &&
+    targetTileY < mapHeight
+  ) {
+    const targetTile = tiles[targetTileY]?.[targetTileX];
+    if (targetTile && targetTile.item === "tree" && targetTile.tree) {
+      const tree = targetTile.tree;
+
+      // Decrease tree health
+      (tree as any).health = ((tree as any).health || 3) - 1;
+
+      // Shake the tree
+      shakeTree(tree);
+
+      // Check if tree health reached 0
+      if ((tree as any).health <= 0) {
+        // Remove tree from container
+        treesContainer.removeChild(tree);
+
+        // Update tile data
+        targetTile.item = "wood";
+        targetTile.tree = undefined;
+        targetTile.woodPieces = [];
+
+        // Create 3 wood pieces on the tile
+        const tileCenterX = targetTileX * tileSize + tileSize / 2;
+        const tileCenterY = targetTileY * tileSize + tileSize / 2;
+
+        // Position wood pieces in a small area around tile center
+        const offsets = [
+          { x: -8, y: -6 },
+          { x: 8, y: -6 },
+          { x: 0, y: 6 },
+        ];
+
+        for (let i = 0; i < 3; i++) {
+          const woodPiece = createWoodPiece();
+          woodPiece.x = tileCenterX + offsets[i].x;
+          woodPiece.y = tileCenterY + offsets[i].y;
+          woodContainer.addChild(woodPiece);
+          targetTile.woodPieces!.push(woodPiece);
+        }
+      }
+    }
+  }
+}
+
+function checkWoodCollection(
+  player: PlayerContainer,
+  playerTileX: number,
+  playerTileY: number,
+  tiles: TileData[][],
+  mapWidth: number,
+  mapHeight: number,
+  woodContainer: Container,
+  onWoodCollected?: () => void
+): void {
+  // Calculate target tile based on player direction
+  let targetTileX = playerTileX;
+  let targetTileY = playerTileY;
+
+  switch (player.direction) {
+    case "up":
+      targetTileY = playerTileY - 1;
+      break;
+    case "down":
+      targetTileY = playerTileY + 1;
+      break;
+    case "left":
+      targetTileX = playerTileX - 1;
+      break;
+    case "right":
+      targetTileX = playerTileX + 1;
+      break;
+  }
+
+  // Check if target tile is valid and contains wood
+  if (
+    targetTileX >= 0 &&
+    targetTileX < mapWidth &&
+    targetTileY >= 0 &&
+    targetTileY < mapHeight
+  ) {
+    const targetTile = tiles[targetTileY]?.[targetTileX];
+    if (
+      targetTile &&
+      targetTile.item === "wood" &&
+      targetTile.woodPieces &&
+      targetTile.woodPieces.length > 0
+    ) {
+      // Remove the first wood piece
+      const woodPiece = targetTile.woodPieces.shift()!;
+      woodContainer.removeChild(woodPiece);
+
+      // If no more wood pieces, update tile item
+      if (targetTile.woodPieces.length === 0) {
+        targetTile.item = null;
+        targetTile.woodPieces = undefined;
+      }
+
+      // Notify that wood was collected
+      if (onWoodCollected) {
+        onWoodCollected();
+      }
+    }
+  }
+}
+
+function shakeTree(tree: Graphics): void {
+  // Store original position if not already stored
+  if (!(tree as any).originalX) {
+    (tree as any).originalX = tree.x;
+    (tree as any).originalY = tree.y;
+  }
+
+  // Reset shake animation state
+  (tree as any).shakeTime = 0;
+  (tree as any).isShaking = true;
+}
+
+function updatePlayerDirection(player: PlayerContainer): void {
+  const { body, direction } = player;
+
+  // Clear previous drawings and redraw based on direction
+  body.clear();
+
+  // Common body parts (same for all directions)
+  // Draw body (rectangle)
+  body.rect(-8, 0, 16, 20);
+  body.fill(0x4169e1); // Blue for body
+
+  // Draw head (circle)
+  body.circle(0, -15, 10);
+  body.fill(0xffdbac); // Skin color for head
+
+  // Draw hair on top of head
+  body.circle(0, -22, 8);
+  body.fill(0x8b4513); // Brown hair
+
+  // Draw arms
+  body.rect(-12, 2, 4, 8);
+  body.fill(0xffdbac); // Left arm
+  body.rect(8, 2, 4, 8);
+  body.fill(0xffdbac); // Right arm
+
+  // Draw legs
+  body.rect(-6, 18, 5, 8);
+  body.fill(0x2c3e50); // Dark blue pants - left leg
+  body.rect(1, 18, 5, 8);
+  body.fill(0x2c3e50); // Dark blue pants - right leg
+
+  // Draw direction-specific features (eyes, nose, mouth)
+  switch (direction) {
+    case "left":
+      // Eyes looking left
+      body.circle(-4, -16, 2);
+      body.fill(0x000000); // Left eye (looking left)
+      body.circle(-1, -16, 2);
+      body.fill(0x000000); // Right eye (looking left)
+      // Nose
+      body.circle(-2, -13, 1.5);
+      body.fill(0xffdbac);
+      // Mouth
+      body.rect(-3, -11, 2, 1);
+      body.fill(0x000000);
+      // Flip player horizontally
+      body.scale.x = -1;
+      body.scale.y = 1;
+      break;
+    case "right":
+      // Eyes looking right
+      body.circle(1, -16, 2);
+      body.fill(0x000000); // Left eye (looking right)
+      body.circle(4, -16, 2);
+      body.fill(0x000000); // Right eye (looking right)
+      // Nose
+      body.circle(2, -13, 1.5);
+      body.fill(0xffdbac);
+      // Mouth
+      body.rect(1, -11, 2, 1);
+      body.fill(0x000000);
+      // Normal orientation
+      body.scale.x = 1;
+      body.scale.y = 1;
+      break;
+    case "up":
+      // Eyes looking up
+      body.circle(-3, -18, 2);
+      body.fill(0x000000); // Left eye (looking up)
+      body.circle(3, -18, 2);
+      body.fill(0x000000); // Right eye (looking up)
+      // Nose
+      body.circle(0, -15, 1.5);
+      body.fill(0xffdbac);
+      // Mouth
+      body.rect(-2, -12, 4, 1);
+      body.fill(0x000000);
+      // Normal orientation
+      body.scale.x = 1;
+      body.scale.y = 1;
+      break;
+    case "down":
+      // Eyes looking down (default)
+      body.circle(-3, -16, 2);
+      body.fill(0x000000); // Left eye
+      body.circle(3, -16, 2);
+      body.fill(0x000000); // Right eye
+      // Nose
+      body.circle(0, -13, 1.5);
+      body.fill(0xffdbac);
+      // Mouth
+      body.rect(-2, -11, 4, 1);
+      body.fill(0x000000);
+      // Normal orientation
+      body.scale.x = 1;
+      body.scale.y = 1;
+      break;
+  }
 }

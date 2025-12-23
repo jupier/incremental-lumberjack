@@ -3,7 +3,7 @@ import { createTree } from "./tree";
 
 const TILE_SIZE = 48; // Size of each tile in pixels
 
-export type TileItem = "tree" | null;
+export type TileItem = "tree" | "wood" | null;
 
 export interface MapConfig {
   width: number; // Number of tiles wide
@@ -14,21 +14,51 @@ export interface TileData {
   x: number; // Tile x coordinate
   y: number; // Tile y coordinate
   item: TileItem; // Item on this tile
+  tree?: Graphics; // Reference to tree graphics if item is "tree"
+  woodPieces?: Graphics[]; // Array of wood piece graphics if item is "wood"
 }
 
 export function createMap(config: MapConfig): {
   grassContainer: Container;
   treesContainer: Container;
+  collectZoneContainer: Container;
   tiles: TileData[][];
 } {
   const grassContainer = new Container();
   const treesContainer = new Container();
+  const collectZoneContainer = new Container();
   const tiles: TileData[][] = [];
 
   // Calculate center spawn point
   const centerX = Math.floor(config.width / 2);
   const centerY = Math.floor(config.height / 2);
   const spawnRadius = 3;
+
+  // Create collect zone (3x3 tiles at center)
+  const collectZoneSize = 3;
+  const collectZoneStartX = centerX - 1; // 3x3 zone centered at centerX, centerY
+  const collectZoneStartY = centerY - 1;
+
+  const collectZone = new Graphics();
+  // Draw a semi-transparent overlay for the collect zone
+  collectZone.rect(
+    collectZoneStartX * TILE_SIZE,
+    collectZoneStartY * TILE_SIZE,
+    collectZoneSize * TILE_SIZE,
+    collectZoneSize * TILE_SIZE
+  );
+  collectZone.fill({ color: 0x4169e1, alpha: 0.3 }); // Blue tint with transparency
+
+  // Draw border around the collect zone
+  collectZone.rect(
+    collectZoneStartX * TILE_SIZE,
+    collectZoneStartY * TILE_SIZE,
+    collectZoneSize * TILE_SIZE,
+    collectZoneSize * TILE_SIZE
+  );
+  collectZone.stroke({ width: 3, color: 0x4169e1 }); // Blue border
+
+  collectZoneContainer.addChild(collectZone);
 
   // Phase 1: Create all grass tiles first
   for (let y = 0; y < config.height; y++) {
@@ -64,13 +94,14 @@ export function createMap(config: MapConfig): {
         tree.y = treeY;
         treesContainer.addChild(tree);
 
-        // Update tile data
+        // Update tile data with tree reference
         tiles[y][x].item = "tree";
+        tiles[y][x].tree = tree;
       }
     }
   }
 
-  return { grassContainer, treesContainer, tiles };
+  return { grassContainer, treesContainer, collectZoneContainer, tiles };
 }
 
 function createGrassTile(): Graphics {

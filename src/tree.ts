@@ -21,15 +21,9 @@ export function createTree(): Graphics {
   tree.eventMode = "static";
   tree.cursor = "pointer";
 
-  // Add click handler
-  tree.on("pointerdown", () => {
-    console.log("Tree clicked!");
-    // Tree will be clickable - we'll add more functionality later
-    tree.scale.set(tree.scale.x * 0.95); // Slight scale down on click for feedback
-    setTimeout(() => {
-      tree.scale.set(1.0); // Reset scale
-    }, 100);
-  });
+  // Add health property to tree
+  (tree as any).health = 3;
+  (tree as any).maxHealth = 3;
 
   return tree;
 }

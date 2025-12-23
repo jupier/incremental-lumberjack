@@ -2,6 +2,13 @@ import { Application, Container } from "pixi.js";
 import { createPlayer, setupPlayerMovement, PlayerPosition } from "./player";
 import { createMap, getTileSize } from "./map";
 import { createMinimap, updateMinimapPlayer } from "./minimap";
+import {
+  createWeaponBar,
+  updateWeaponCooldown,
+  addWoodToBar,
+  removeWoodFromBar,
+} from "./weapon-bar";
+import { createWoodCounter } from "./wood-counter";
 
 // Create and initialize PixiJS application with full screen
 const app = new Application();
@@ -23,6 +30,9 @@ window.addEventListener("resize", () => {
   // Update minimap position
   minimap.x = window.innerWidth - 210; // MINIMAP_WIDTH + 10
   minimap.y = 10;
+  // Update weapon bar position (centered, 400px wide)
+  weaponBar.x = (window.innerWidth - 400) / 2; // BAR_WIDTH
+  weaponBar.y = window.innerHeight - 80; // BAR_HEIGHT
 });
 
 // Create a world container that will move (camera system)
@@ -35,17 +45,25 @@ const mapWidth = 50; // Large map width in tiles
 const mapHeight = 50; // Large map height in tiles
 
 // Create the map with separate containers for grass and trees
-const { grassContainer, treesContainer, tiles } = createMap({
-  width: mapWidth,
-  height: mapHeight,
-});
+const { grassContainer, treesContainer, collectZoneContainer, tiles } =
+  createMap({
+    width: mapWidth,
+    height: mapHeight,
+  });
 
 // Add grass tiles first (bottom layer)
 world.addChild(grassContainer);
 
-// Create and add the player (middle layer - behind trees, in front of grass)
+// Add collect zone (above grass, below other items)
+world.addChild(collectZoneContainer);
+
+// Create wood pieces container (above grass, below player)
+const woodContainer = new Container();
+world.addChild(woodContainer);
+
+// Create and add the player (middle layer - behind trees, in front of grass and wood)
 const player = createPlayer();
-world.addChild(player);
+world.addChild(player.container);
 
 // Add trees last (top layer - in front of player)
 world.addChild(treesContainer);
@@ -54,11 +72,44 @@ world.addChild(treesContainer);
 const minimap = createMinimap(tiles, mapWidth, mapHeight);
 app.stage.addChild(minimap);
 
+// Create weapon bar
+const { container: weaponBar, slots } = createWeaponBar();
+app.stage.addChild(weaponBar);
+const axeSlot = slots[0]; // First slot is the axe
+
+// Create wood counter
+const { container: woodCounter, updateCount: updateWoodCount } =
+  createWoodCounter();
+app.stage.addChild(woodCounter);
+let globalWoodCount = 0;
+
 // Track player position for minimap
 let currentPlayerPosition: PlayerPosition = {
   tileX: Math.floor(mapWidth / 2),
   tileY: Math.floor(mapHeight / 2),
 };
+
+// Helper function to check if player is in collect zone
+function isInCollectZone(
+  tileX: number,
+  tileY: number,
+  mapWidth: number,
+  mapHeight: number
+): boolean {
+  const centerX = Math.floor(mapWidth / 2);
+  const centerY = Math.floor(mapHeight / 2);
+  const collectZoneStartX = centerX - 1; // 3x3 zone centered at center
+  const collectZoneStartY = centerY - 1;
+  const collectZoneEndX = centerX + 1;
+  const collectZoneEndY = centerY + 1;
+
+  return (
+    tileX >= collectZoneStartX &&
+    tileX <= collectZoneEndX &&
+    tileY >= collectZoneStartY &&
+    tileY <= collectZoneEndY
+  );
+}
 
 // Setup player movement with z/q/s/d keys (tile-based)
 setupPlayerMovement(
@@ -68,6 +119,8 @@ setupPlayerMovement(
   mapWidth,
   mapHeight,
   tiles,
+  treesContainer,
+  woodContainer,
   (position) => {
     currentPlayerPosition = position;
     updateMinimapPlayer(
@@ -77,6 +130,22 @@ setupPlayerMovement(
       mapWidth,
       mapHeight
     );
+
+    // Check if player is in collect zone and deposit wood
+    if (isInCollectZone(position.tileX, position.tileY, mapWidth, mapHeight)) {
+      if (removeWoodFromBar(weaponBar, slots)) {
+        globalWoodCount++;
+        updateWoodCount(globalWoodCount);
+      }
+    }
+  },
+  (progress) => {
+    // Update weapon bar cooldown
+    updateWeaponCooldown(axeSlot, progress);
+  },
+  () => {
+    // Wood collected callback
+    addWoodToBar(weaponBar, slots);
   }
 );
 
@@ -92,8 +161,8 @@ updateMinimapPlayer(
 // Camera system: keep player centered, move the world
 function updateCamera() {
   // Use player's actual position (smooth movement)
-  const playerWorldX = player.x;
-  const playerWorldY = player.y;
+  const playerWorldX = player.container.x;
+  const playerWorldY = player.container.y;
 
   // Move world so player is centered on screen
   world.x = window.innerWidth / 2 - playerWorldX;
@@ -119,4 +188,34 @@ function updateCamera() {
 // Update camera every frame to follow player smoothly
 app.ticker.add(() => {
   updateCamera();
+
+  // Update tree shake animations
+  const shakeIntensity = 3;
+  const shakeDuration = 0.2; // seconds
+  const shakeCount = 5;
+  const deltaTime = app.ticker.deltaMS / 1000; // Convert to seconds
+
+  treesContainer.children.forEach((child) => {
+    const tree = child as any;
+    if (tree.isShaking) {
+      tree.shakeTime = (tree.shakeTime || 0) + deltaTime;
+      const progress = tree.shakeTime / shakeDuration;
+
+      if (progress >= 1) {
+        // Animation complete, reset position
+        tree.x = tree.originalX;
+        tree.y = tree.originalY;
+        tree.isShaking = false;
+        tree.shakeTime = 0;
+      } else {
+        // Calculate shake offset using sine wave
+        const offset =
+          Math.sin(progress * Math.PI * shakeCount) *
+          shakeIntensity *
+          (1 - progress);
+        tree.x = tree.originalX + offset;
+        tree.y = tree.originalY + offset * 0.5; // Slight vertical shake
+      }
+    }
+  });
 });

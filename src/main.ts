@@ -10,6 +10,11 @@ import {
 } from "./weapon-bar";
 import { createWoodCounter } from "./wood-counter";
 import { createImprovementsMenu, Improvement } from "./improvements-menu";
+import {
+  PlayerStateManager,
+  IMPROVEMENT_EFFECTS,
+  DEFAULT_PLAYER_CONFIG,
+} from "./player-state";
 
 // Create and initialize PixiJS application with full screen
 const app = new Application();
@@ -84,28 +89,22 @@ const { container: woodCounter, updateCount: updateWoodCount } =
 app.stage.addChild(woodCounter);
 let globalWoodCount = 0;
 
-// Wood inventory capacity (starts at 1)
-let woodInventoryCapacity = 1;
-
-// Improvements state
-let improvementsState = {
-  improvedAxe: false,
-  increasedWoodCapacity: false,
-};
+// Initialize player state manager
+const playerStateManager = new PlayerStateManager();
 
 // Create improvements menu
 const improvements: Improvement[] = [
   {
     id: "improved_axe",
     name: "Improved Axe",
-    description: "Reduces axe cooldown by 50%",
+    description: IMPROVEMENT_EFFECTS.improved_axe.description,
     cost: 10,
     purchased: false,
   },
   {
     id: "increased_wood_capacity",
     name: "Increased Wood Capacity",
-    description: "Increase wood inventory capacity by 1",
+    description: IMPROVEMENT_EFFECTS.increased_wood_capacity.description,
     cost: 15,
     purchased: false,
   },
@@ -123,28 +122,38 @@ const {
     !improvement.purchased &&
     globalWoodCount >= improvement.cost
   ) {
-    globalWoodCount -= improvement.cost;
-    improvement.purchased = true;
-    updateWoodCount(globalWoodCount);
-    updateImprovementsMenu(improvements);
+    // Purchase the improvement through state manager
+    const purchased = playerStateManager.purchaseImprovement(improvementId);
+    if (purchased) {
+      globalWoodCount -= improvement.cost;
+      improvement.purchased = true;
+      updateWoodCount(globalWoodCount);
+      updateImprovementsMenu(improvements);
 
-    // Apply improvement effects
-    if (improvementId === "improved_axe") {
-      improvementsState.improvedAxe = true;
-      // Update player cooldown
-      if (playerMovement.updateCooldownDuration) {
-        playerMovement.updateCooldownDuration(true);
+      // Get updated config
+      const config = playerStateManager.getConfig();
+
+      // Update player cooldown if axe was improved
+      if (
+        improvementId === "improved_axe" &&
+        playerMovement.updateCooldownDuration
+      ) {
+        // Use the actual cooldown from config (supports future multi-level improvements)
+        const isImproved =
+          config.axeCooldownDuration <
+          DEFAULT_PLAYER_CONFIG.axeCooldownDuration;
+        playerMovement.updateCooldownDuration(isImproved);
       }
-    } else if (improvementId === "increased_wood_capacity") {
-      improvementsState.increasedWoodCapacity = true;
-      woodInventoryCapacity++;
-      // Update wood slot capacity display
-      const woodSlot = slots.find((slot) => slot.isWood);
-      if (woodSlot) {
-        woodSlot.capacity = woodInventoryCapacity;
-        if (woodSlot.countText) {
-          const count = woodSlot.count || 0;
-          woodSlot.countText.text = `${count}/${woodInventoryCapacity}`;
+
+      // Update wood slot capacity display if capacity was increased
+      if (improvementId === "increased_wood_capacity") {
+        const woodSlot = slots.find((slot) => slot.isWood);
+        if (woodSlot) {
+          woodSlot.capacity = config.woodInventoryCapacity;
+          if (woodSlot.countText) {
+            const count = woodSlot.count || 0;
+            woodSlot.countText.text = `${count}/${config.woodInventoryCapacity}`;
+          }
         }
       }
     }
@@ -181,6 +190,7 @@ function isInCollectZone(
 }
 
 // Setup player movement with z/q/s/d keys (tile-based)
+const initialConfig = playerStateManager.getConfig();
 const playerMovement = setupPlayerMovement(
   player,
   app,
@@ -216,9 +226,10 @@ const playerMovement = setupPlayerMovement(
   () => {
     // Wood collected callback - try to add wood (respects capacity)
     // Returns true if wood was added, false if inventory is full
-    return addWoodToBar(weaponBar, slots, woodInventoryCapacity);
+    const config = playerStateManager.getConfig();
+    return addWoodToBar(weaponBar, slots, config.woodInventoryCapacity);
   },
-  improvementsState.improvedAxe
+  initialConfig.axeCooldownDuration < 1.0 // Check if improved (cooldown < 1.0 means improved)
 );
 
 // Initialize minimap with player position

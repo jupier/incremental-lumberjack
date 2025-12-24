@@ -7,6 +7,10 @@ export interface PlayerPosition {
   tileY: number;
 }
 
+export interface PlayerMovementResult extends PlayerPosition {
+  updateCooldownDuration?: (improved: boolean) => void;
+}
+
 export type PlayerDirection = "up" | "down" | "left" | "right";
 
 export interface PlayerContainer {
@@ -86,8 +90,9 @@ export function setupPlayerMovement(
   woodContainer: Container,
   onMove?: (position: PlayerPosition) => void,
   onCooldownUpdate?: (progress: number) => void,
-  onWoodCollected?: () => void
-): PlayerPosition {
+  onWoodCollected?: () => boolean,
+  improvedAxe?: boolean
+): PlayerMovementResult {
   let currentTileX = Math.floor(mapWidth / 2);
   let currentTileY = Math.floor(mapHeight / 2);
   let isMoving = false;
@@ -116,8 +121,13 @@ export function setupPlayerMovement(
 
   // Hit cooldown system
   let hitCooldown = 0;
-  const hitCooldownDuration = 1.0; // 1 second cooldown
+  let hitCooldownDuration = improvedAxe ? 0.5 : 1.0; // 0.5 seconds if improved, 1 second otherwise
   let canHit = true;
+
+  // Function to update cooldown duration (for improvements)
+  const updateCooldownDuration = (improved: boolean) => {
+    hitCooldownDuration = improved ? 0.5 : 1.0;
+  };
 
   window.addEventListener("keydown", (e) => {
     if (e.code === "Space" && canHit && !isMoving) {
@@ -140,9 +150,8 @@ export function setupPlayerMovement(
         onCooldownUpdate(0); // Show cooldown bar
       }
     } else if (e.key.toLowerCase() === "c" && !isMoving) {
-      // Collect wood piece
+      // Collect wood piece from current tile
       checkWoodCollection(
-        player,
         currentTileX,
         currentTileY,
         tiles,
@@ -255,7 +264,11 @@ export function setupPlayerMovement(
     }
   });
 
-  return { tileX: currentTileX, tileY: currentTileY };
+  return {
+    tileX: currentTileX,
+    tileY: currentTileY,
+    updateCooldownDuration,
+  };
 }
 
 function checkTreeHit(
@@ -339,61 +352,45 @@ function checkTreeHit(
 }
 
 function checkWoodCollection(
-  player: PlayerContainer,
   playerTileX: number,
   playerTileY: number,
   tiles: TileData[][],
   mapWidth: number,
   mapHeight: number,
   woodContainer: Container,
-  onWoodCollected?: () => void
+  onWoodCollected?: () => boolean
 ): void {
-  // Calculate target tile based on player direction
-  let targetTileX = playerTileX;
-  let targetTileY = playerTileY;
-
-  switch (player.direction) {
-    case "up":
-      targetTileY = playerTileY - 1;
-      break;
-    case "down":
-      targetTileY = playerTileY + 1;
-      break;
-    case "left":
-      targetTileX = playerTileX - 1;
-      break;
-    case "right":
-      targetTileX = playerTileX + 1;
-      break;
-  }
-
-  // Check if target tile is valid and contains wood
+  // Check the current tile where the player is standing
   if (
-    targetTileX >= 0 &&
-    targetTileX < mapWidth &&
-    targetTileY >= 0 &&
-    targetTileY < mapHeight
+    playerTileX >= 0 &&
+    playerTileX < mapWidth &&
+    playerTileY >= 0 &&
+    playerTileY < mapHeight
   ) {
-    const targetTile = tiles[targetTileY]?.[targetTileX];
+    const currentTile = tiles[playerTileY]?.[playerTileX];
     if (
-      targetTile &&
-      targetTile.item === "wood" &&
-      targetTile.woodPieces &&
-      targetTile.woodPieces.length > 0
+      currentTile &&
+      currentTile.item === "wood" &&
+      currentTile.woodPieces &&
+      currentTile.woodPieces.length > 0
     ) {
-      // Remove the first wood piece
-      const woodPiece = targetTile.woodPieces.shift()!;
-      woodContainer.removeChild(woodPiece);
-
-      // If no more wood pieces, update tile item
-      if (targetTile.woodPieces.length === 0) {
-        targetTile.item = null;
-        targetTile.woodPieces = undefined;
+      // Try to add wood to inventory first (check capacity)
+      let canCollect = true;
+      if (onWoodCollected) {
+        canCollect = onWoodCollected();
       }
 
-      // Notify that wood was collected
-      if (onWoodCollected) {
-        onWoodCollected();
+      // Only remove wood piece from tile if inventory has space
+      if (canCollect) {
+        // Remove the first wood piece
+        const woodPiece = currentTile.woodPieces.shift()!;
+        woodContainer.removeChild(woodPiece);
+
+        // If no more wood pieces, update tile item
+        if (currentTile.woodPieces.length === 0) {
+          currentTile.item = null;
+          currentTile.woodPieces = undefined;
+        }
       }
     }
   }

@@ -6,9 +6,10 @@ import {
   createWeaponBar,
   updateWeaponCooldown,
   addWoodToBar,
-  removeWoodFromBar,
+  removeAllWoodFromBar,
 } from "./weapon-bar";
 import { createWoodCounter } from "./wood-counter";
+import { createImprovementsMenu, Improvement } from "./improvements-menu";
 
 // Create and initialize PixiJS application with full screen
 const app = new Application();
@@ -83,7 +84,75 @@ const { container: woodCounter, updateCount: updateWoodCount } =
 app.stage.addChild(woodCounter);
 let globalWoodCount = 0;
 
-// Track player position for minimap
+// Wood inventory capacity (starts at 1)
+let woodInventoryCapacity = 1;
+
+// Improvements state
+let improvementsState = {
+  improvedAxe: false,
+  increasedWoodCapacity: false,
+};
+
+// Create improvements menu
+const improvements: Improvement[] = [
+  {
+    id: "improved_axe",
+    name: "Improved Axe",
+    description: "Reduces axe cooldown by 50%",
+    cost: 10,
+    purchased: false,
+  },
+  {
+    id: "increased_wood_capacity",
+    name: "Increased Wood Capacity",
+    description: "Increase wood inventory capacity by 1",
+    cost: 15,
+    purchased: false,
+  },
+];
+
+const {
+  container: improvementsMenu,
+  show: showImprovementsMenu,
+  hide: hideImprovementsMenu,
+  update: updateImprovementsMenu,
+} = createImprovementsMenu(improvements, (improvementId: string) => {
+  const improvement = improvements.find((imp) => imp.id === improvementId);
+  if (
+    improvement &&
+    !improvement.purchased &&
+    globalWoodCount >= improvement.cost
+  ) {
+    globalWoodCount -= improvement.cost;
+    improvement.purchased = true;
+    updateWoodCount(globalWoodCount);
+    updateImprovementsMenu(improvements);
+
+    // Apply improvement effects
+    if (improvementId === "improved_axe") {
+      improvementsState.improvedAxe = true;
+      // Update player cooldown
+      if (playerMovement.updateCooldownDuration) {
+        playerMovement.updateCooldownDuration(true);
+      }
+    } else if (improvementId === "increased_wood_capacity") {
+      improvementsState.increasedWoodCapacity = true;
+      woodInventoryCapacity++;
+      // Update wood slot capacity display
+      const woodSlot = slots.find((slot) => slot.isWood);
+      if (woodSlot) {
+        woodSlot.capacity = woodInventoryCapacity;
+        if (woodSlot.countText) {
+          const count = woodSlot.count || 0;
+          woodSlot.countText.text = `${count}/${woodInventoryCapacity}`;
+        }
+      }
+    }
+  }
+});
+app.stage.addChild(improvementsMenu);
+
+// Track player position for minimap (will be updated by setupPlayerMovement)
 let currentPlayerPosition: PlayerPosition = {
   tileX: Math.floor(mapWidth / 2),
   tileY: Math.floor(mapHeight / 2),
@@ -112,7 +181,7 @@ function isInCollectZone(
 }
 
 // Setup player movement with z/q/s/d keys (tile-based)
-setupPlayerMovement(
+const playerMovement = setupPlayerMovement(
   player,
   app,
   tileSize,
@@ -131,10 +200,11 @@ setupPlayerMovement(
       mapHeight
     );
 
-    // Check if player is in collect zone and deposit wood
+    // Check if player is in collect zone and deposit all wood
     if (isInCollectZone(position.tileX, position.tileY, mapWidth, mapHeight)) {
-      if (removeWoodFromBar(weaponBar, slots)) {
-        globalWoodCount++;
+      const woodDeposited = removeAllWoodFromBar(weaponBar, slots);
+      if (woodDeposited > 0) {
+        globalWoodCount += woodDeposited;
         updateWoodCount(globalWoodCount);
       }
     }
@@ -144,12 +214,18 @@ setupPlayerMovement(
     updateWeaponCooldown(axeSlot, progress);
   },
   () => {
-    // Wood collected callback
-    addWoodToBar(weaponBar, slots);
-  }
+    // Wood collected callback - try to add wood (respects capacity)
+    // Returns true if wood was added, false if inventory is full
+    return addWoodToBar(weaponBar, slots, woodInventoryCapacity);
+  },
+  improvementsState.improvedAxe
 );
 
 // Initialize minimap with player position
+currentPlayerPosition = {
+  tileX: playerMovement.tileX,
+  tileY: playerMovement.tileY,
+};
 updateMinimapPlayer(
   minimap,
   currentPlayerPosition.tileX,
@@ -157,6 +233,34 @@ updateMinimapPlayer(
   mapWidth,
   mapHeight
 );
+
+// Handle Tab key to show/hide improvements menu
+let improvementsMenuVisible = false;
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    if (
+      currentPlayerPosition &&
+      isInCollectZone(
+        currentPlayerPosition.tileX,
+        currentPlayerPosition.tileY,
+        mapWidth,
+        mapHeight
+      )
+    ) {
+      if (improvementsMenuVisible) {
+        hideImprovementsMenu();
+        improvementsMenuVisible = false;
+      } else {
+        showImprovementsMenu();
+        improvementsMenuVisible = true;
+      }
+    }
+  } else if (e.key === "Escape" && improvementsMenuVisible) {
+    hideImprovementsMenu();
+    improvementsMenuVisible = false;
+  }
+});
 
 // Camera system: keep player centered, move the world
 function updateCamera() {

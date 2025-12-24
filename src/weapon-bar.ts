@@ -13,6 +13,7 @@ export interface WeaponSlot {
   cooldownProgress: number;
   isWood?: boolean; // True if this slot contains wood instead of a weapon
   count?: number; // Number of wood pieces in this slot
+  capacity?: number; // Maximum wood capacity for this slot
   countText?: Text; // Text element for displaying wood count
 }
 
@@ -45,32 +46,50 @@ export function createWeaponBar(): {
   return { container: barContainer, slots };
 }
 
-export function addWoodToBar(barContainer: Container, slots: WeaponSlot[]): void {
+export function addWoodToBar(
+  barContainer: Container,
+  slots: WeaponSlot[],
+  capacity: number = 1
+): boolean {
   // Find existing wood slot or create new one
-  let woodSlot = slots.find(slot => slot.isWood);
-  
+  let woodSlot = slots.find((slot) => slot.isWood);
+
   if (!woodSlot) {
     // Create new wood slot
-    woodSlot = createWoodSlot();
+    woodSlot = createWoodSlot(capacity);
     // Position it to the right of the axe slot
     const axeSlot = slots[0];
-    woodSlot.container.x = axeSlot.container.x + WEAPON_SLOT_SIZE + WEAPON_SLOT_PADDING;
+    woodSlot.container.x =
+      axeSlot.container.x + WEAPON_SLOT_SIZE + WEAPON_SLOT_PADDING;
     woodSlot.container.y = 8;
     barContainer.addChild(woodSlot.container);
     slots.push(woodSlot);
   }
 
+  // Check if inventory is full
+  const currentCount = woodSlot.count || 0;
+  if (currentCount >= capacity) {
+    return false; // Inventory full
+  }
+
+  // Update capacity if it changed
+  woodSlot.capacity = capacity;
+
   // Increment wood count
-  woodSlot.count = (woodSlot.count || 0) + 1;
+  woodSlot.count = currentCount + 1;
   updateWoodSlotCount(woodSlot);
+  return true; // Successfully added
 }
 
-export function removeWoodFromBar(barContainer: Container, slots: WeaponSlot[]): boolean {
-  const woodSlot = slots.find(slot => slot.isWood);
+export function removeWoodFromBar(
+  barContainer: Container,
+  slots: WeaponSlot[]
+): boolean {
+  const woodSlot = slots.find((slot) => slot.isWood);
   if (woodSlot && woodSlot.count && woodSlot.count > 0) {
     woodSlot.count -= 1;
     updateWoodSlotCount(woodSlot);
-    
+
     // Remove slot if count reaches 0
     if (woodSlot.count === 0) {
       const index = slots.indexOf(woodSlot);
@@ -85,7 +104,27 @@ export function removeWoodFromBar(barContainer: Container, slots: WeaponSlot[]):
   return false;
 }
 
-function createWoodSlot(): WeaponSlot {
+export function removeAllWoodFromBar(
+  barContainer: Container,
+  slots: WeaponSlot[]
+): number {
+  const woodSlot = slots.find((slot) => slot.isWood);
+  if (woodSlot && woodSlot.count && woodSlot.count > 0) {
+    const woodCount = woodSlot.count;
+    woodSlot.count = 0;
+
+    // Remove slot
+    const index = slots.indexOf(woodSlot);
+    if (index > -1) {
+      slots.splice(index, 1);
+      barContainer.removeChild(woodSlot.container);
+    }
+    return woodCount;
+  }
+  return 0;
+}
+
+function createWoodSlot(capacity: number = 1): WeaponSlot {
   const slotContainer = new Container();
 
   // Create slot background
@@ -130,13 +169,27 @@ function createWoodSlot(): WeaponSlot {
     cooldownProgress: 0,
     isWood: true,
     count: 0,
+    capacity,
     countText,
   };
 }
 
 function updateWoodSlotCount(slot: WeaponSlot): void {
   if (slot.countText) {
-    slot.countText.text = (slot.count || 0).toString();
+    const count = slot.count || 0;
+    const capacity = slot.capacity || 1;
+    slot.countText.text = `${count}/${capacity}`;
+  }
+}
+
+export function updateWoodCapacity(
+  slots: WeaponSlot[],
+  newCapacity: number
+): void {
+  const woodSlot = slots.find((slot) => slot.isWood);
+  if (woodSlot) {
+    woodSlot.capacity = newCapacity;
+    updateWoodSlotCount(woodSlot);
   }
 }
 
@@ -192,10 +245,7 @@ function createWeaponSlot(weaponName: string): WeaponSlot {
   };
 }
 
-export function updateWeaponCooldown(
-  slot: WeaponSlot,
-  progress: number
-): void {
+export function updateWeaponCooldown(slot: WeaponSlot, progress: number): void {
   const barWidth = WEAPON_SLOT_SIZE;
   const barHeight = 4;
 
@@ -226,4 +276,3 @@ export function updateWeaponCooldown(
     slot.cooldownBar.visible = false;
   }
 }
-

@@ -1,7 +1,6 @@
-import { Graphics, Container, Text } from "pixi.js";
+import { Graphics, Container } from "pixi.js";
 import { TileData } from "./map";
 
-const MINIMAP_TILE_SIZE = 2; // Size of each tile in the minimap
 const MINIMAP_PADDING = 10;
 const MINIMAP_WIDTH = 200;
 const MINIMAP_HEIGHT = 200;

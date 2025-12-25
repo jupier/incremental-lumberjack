@@ -3,7 +3,6 @@ import { Graphics, Container, Text, TextStyle } from "pixi.js";
 const WEAPON_SLOT_SIZE = 50;
 const WEAPON_SLOT_PADDING = 10;
 const BAR_HEIGHT = 80;
-const BAR_PADDING = 20;
 const BAR_WIDTH = 400;
 
 export interface WeaponSlot {

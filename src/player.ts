@@ -101,7 +101,7 @@ export function setupPlayerMovement(
   // Center player in tile
   let targetX = currentTileX * tileSize + tileSize / 2;
   let targetY = currentTileY * tileSize + tileSize / 2;
-  const moveSpeed = 8; // Pixels per frame
+  const moveSpeed = 6; // Pixels per frame (reduced for more controlled movement)
 
   // Set initial position (centered in tile)
   player.container.x = targetX;
@@ -193,14 +193,18 @@ export function setupPlayerMovement(
   });
 
   // Update player position based on keys (z/q/s/d for WASD in French layout)
-  app.ticker.add(() => {
+  app.ticker.add((ticker) => {
+    // Use delta time for frame-independent movement (smoother on different frame rates)
+    const deltaTime = ticker.deltaMS / 16.67; // Normalize to 60fps (16.67ms per frame)
+    const adjustedMoveSpeed = moveSpeed * deltaTime;
+
     if (isMoving) {
       // Smooth movement to target tile
       const dx = targetX - player.container.x;
       const dy = targetY - player.container.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      if (distance < moveSpeed) {
+      if (distance < adjustedMoveSpeed) {
         // Reached target
         player.container.x = targetX;
         player.container.y = targetY;
@@ -209,9 +213,9 @@ export function setupPlayerMovement(
           onMove({ tileX: currentTileX, tileY: currentTileY });
         }
       } else {
-        // Move towards target
-        player.container.x += (dx / distance) * moveSpeed;
-        player.container.y += (dy / distance) * moveSpeed;
+        // Move towards target with frame-independent speed
+        player.container.x += (dx / distance) * adjustedMoveSpeed;
+        player.container.y += (dy / distance) * adjustedMoveSpeed;
       }
     } else {
       // Check for movement input (allow holding keys)
@@ -405,6 +409,8 @@ function checkTreeHit(
           const woodPiece = createWoodPiece();
           woodPiece.x = tileCenterX + offsets[i].x;
           woodPiece.y = tileCenterY + offsets[i].y;
+          // Enable culling on wood pieces for better performance
+          woodPiece.cullable = true;
           woodContainer.addChild(woodPiece);
           targetTile.woodPieces!.push(woodPiece);
         }

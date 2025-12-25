@@ -45,6 +45,26 @@ export function createMinimap(
     }
   }
 
+  // Draw collect zone (3x3 tiles at center of map)
+  const centerX = Math.floor(mapWidth / 2);
+  const centerY = Math.floor(mapHeight / 2);
+  const collectZoneSize = 3;
+  const collectZoneStartX = centerX - 1;
+  const collectZoneStartY = centerY - 1;
+
+  const collectZoneGraphic = new Graphics();
+  const zonePixelX = MINIMAP_PADDING + collectZoneStartX * scale;
+  const zonePixelY = MINIMAP_PADDING + collectZoneStartY * scale;
+  collectZoneGraphic.rect(
+    zonePixelX,
+    zonePixelY,
+    collectZoneSize * scale,
+    collectZoneSize * scale
+  );
+  collectZoneGraphic.fill({ color: 0x4169e1, alpha: 0.5 }); // Blue for collect zone
+  collectZoneGraphic.name = "collectZone";
+  minimapContainer.addChild(collectZoneGraphic);
+
   // Position minimap in top right corner
   minimapContainer.x = window.innerWidth - MINIMAP_WIDTH - 10;
   minimapContainer.y = 10;

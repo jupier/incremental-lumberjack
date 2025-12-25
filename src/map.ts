@@ -68,6 +68,8 @@ export function createMap(config: MapConfig): {
       const tile = createGrassTile();
       tile.x = x * TILE_SIZE;
       tile.y = y * TILE_SIZE;
+      // Enable culling on individual tiles for better performance
+      tile.cullable = true;
       grassContainer.addChild(tile);
 
       // Initialize tile data (no items yet)
@@ -92,6 +94,8 @@ export function createMap(config: MapConfig): {
 
         tree.x = treeX;
         tree.y = treeY;
+        // Enable culling on individual trees for better performance
+        tree.cullable = true;
         treesContainer.addChild(tree);
 
         // Update tile data with tree reference

@@ -1,4 +1,7 @@
-import { Application, Container } from "pixi.js";
+import { Application, Container, extensions, CullerPlugin } from "pixi.js";
+
+// Register CullerPlugin for performance optimization (only render visible objects)
+extensions.add(CullerPlugin);
 import { createPlayer, setupPlayerMovement, PlayerPosition } from "./player";
 import { createMap, getTileSize } from "./map";
 import { createMinimap, updateMinimapPlayer } from "./minimap";
@@ -10,11 +13,8 @@ import {
 } from "./weapon-bar";
 import { createWoodCounter } from "./wood-counter";
 import { createImprovementsMenu, Improvement } from "./improvements-menu";
-import {
-  PlayerStateManager,
-  IMPROVEMENT_EFFECTS,
-  DEFAULT_PLAYER_CONFIG,
-} from "./player-state";
+import { PlayerStateManager, DEFAULT_PLAYER_CONFIG } from "./player-state";
+import { getAllImprovements } from "./improvements";
 
 // Create and initialize PixiJS application with full screen
 const app = new Application();
@@ -25,6 +25,9 @@ await app.init({
   backgroundColor: 0x4a6741, // Darker, less shiny green background
   resizeTo: window, // Automatically resize to window
   antialias: true,
+  // Performance optimizations for smoother gameplay
+  powerPreference: "high-performance", // Use dedicated GPU if available
+  autoDensity: true, // Better scaling on high-DPI displays
 });
 
 // Add the canvas to the DOM
@@ -47,8 +50,15 @@ app.stage.addChild(world);
 
 // Create a larger map (bigger than screen)
 const tileSize = getTileSize();
-const mapWidth = 50; // Large map width in tiles
-const mapHeight = 50; // Large map height in tiles
+// Map size: Can be increased significantly
+// Practical limits:
+// - 100x100 = 10,000 tiles (good performance, ~4.8M pixels)
+// - 200x200 = 40,000 tiles (decent performance, ~19.2M pixels)
+// - 500x500 = 250,000 tiles (may be slow on older devices, ~120M pixels)
+// - 1000x1000 = 1,000,000 tiles (very large, may cause memory issues)
+// Current: 100x100 for better exploration while maintaining good performance
+const mapWidth = 100; // Large map width in tiles
+const mapHeight = 100; // Large map height in tiles
 
 // Create the map with separate containers for grass and trees
 const { grassContainer, treesContainer, collectZoneContainer, tiles } =
@@ -56,6 +66,13 @@ const { grassContainer, treesContainer, collectZoneContainer, tiles } =
     width: mapWidth,
     height: mapHeight,
   });
+
+// Enable culling on containers for performance (only render visible tiles)
+grassContainer.cullable = true;
+grassContainer.cullableChildren = true;
+treesContainer.cullable = true;
+treesContainer.cullableChildren = true;
+collectZoneContainer.cullable = true;
 
 // Add grass tiles first (bottom layer)
 world.addChild(grassContainer);
@@ -65,6 +82,8 @@ world.addChild(collectZoneContainer);
 
 // Create wood pieces container (above grass, below player)
 const woodContainer = new Container();
+woodContainer.cullable = true;
+woodContainer.cullableChildren = true;
 world.addChild(woodContainer);
 
 // Create and add the player (middle layer - behind trees, in front of grass and wood)
@@ -92,52 +111,8 @@ let globalWoodCount = 0;
 // Initialize player state manager
 const playerStateManager = new PlayerStateManager();
 
-// Create improvements menu
-const improvements: Improvement[] = [
-  {
-    id: "improved_axe",
-    name: "Improved Axe",
-    description: IMPROVEMENT_EFFECTS.improved_axe.description,
-    cost: 10,
-    purchased: false,
-  },
-  {
-    id: "increased_wood_capacity",
-    name: "Increased Wood Capacity",
-    description: IMPROVEMENT_EFFECTS.increased_wood_capacity.description,
-    cost: 15,
-    purchased: false,
-  },
-  {
-    id: "sharpened_blade",
-    name: "Sharpened Blade",
-    description: IMPROVEMENT_EFFECTS.sharpened_blade.description,
-    cost: 20,
-    purchased: false,
-  },
-  {
-    id: "area_chop",
-    name: "Area Chop",
-    description: IMPROVEMENT_EFFECTS.area_chop.description,
-    cost: 50,
-    purchased: false,
-  },
-  {
-    id: "backpack_upgrade",
-    name: "Backpack Upgrade",
-    description: IMPROVEMENT_EFFECTS.backpack_upgrade.description,
-    cost: 20,
-    purchased: false,
-  },
-  {
-    id: "auto_collect",
-    name: "Auto-Collect",
-    description: IMPROVEMENT_EFFECTS.auto_collect.description,
-    cost: 40,
-    purchased: false,
-    requires: "backpack_upgrade", // Requires Backpack Upgrade
-  },
-];
+// Create improvements menu - get all improvements from centralized file
+const improvements: Improvement[] = getAllImprovements();
 
 const {
   container: improvementsMenu,

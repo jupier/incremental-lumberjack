@@ -23,6 +23,7 @@ export function createImprovementsMenu(
   show: () => void;
   hide: () => void;
   update: (improvements: Improvement[]) => void;
+  destroy: () => void;
 } {
   const container = new Container();
   container.visible = false;
@@ -55,10 +56,109 @@ export function createImprovementsMenu(
   title.y = 30;
   container.addChild(title);
 
-  // Create improvement items container
+  // Calculate scrollable area dimensions
+  const TITLE_HEIGHT = 60;
+  const SCROLLABLE_HEIGHT = MENU_HEIGHT - TITLE_HEIGHT - MENU_PADDING;
+  const SCROLLBAR_WIDTH = 10;
+  const SCROLLBAR_PADDING = 5;
+
+  // Create mask for scrollable area
+  const mask = new Graphics();
+  mask.rect(
+    MENU_PADDING,
+    TITLE_HEIGHT,
+    MENU_WIDTH - MENU_PADDING * 2 - SCROLLBAR_WIDTH - SCROLLBAR_PADDING,
+    SCROLLABLE_HEIGHT
+  );
+  mask.fill(0x000000);
+  container.addChild(mask);
+
+  // Create improvement items container (will be masked)
   const itemsContainer = new Container();
-  itemsContainer.y = 60;
+  itemsContainer.x = MENU_PADDING;
+  itemsContainer.y = TITLE_HEIGHT;
+  itemsContainer.mask = mask;
   container.addChild(itemsContainer);
+
+  // Scroll state
+  let scrollPosition = 0;
+  let maxScroll = 0;
+
+  // Create scrollbar
+  const scrollbarBg = new Graphics();
+  scrollbarBg.rect(0, 0, SCROLLBAR_WIDTH, SCROLLABLE_HEIGHT);
+  scrollbarBg.fill(0x333333);
+  scrollbarBg.x = MENU_WIDTH - MENU_PADDING - SCROLLBAR_WIDTH;
+  scrollbarBg.y = TITLE_HEIGHT;
+  container.addChild(scrollbarBg);
+
+  const scrollbarThumb = new Graphics();
+  scrollbarThumb.rect(0, 0, SCROLLBAR_WIDTH - 2, 30);
+  scrollbarThumb.fill(0x666666);
+  scrollbarThumb.x = MENU_WIDTH - MENU_PADDING - SCROLLBAR_WIDTH + 1;
+  scrollbarThumb.y = TITLE_HEIGHT + 1;
+  scrollbarThumb.eventMode = "static";
+  scrollbarThumb.cursor = "pointer";
+  container.addChild(scrollbarThumb);
+
+  function updateScrollbar() {
+    if (maxScroll <= 0) {
+      scrollbarThumb.visible = false;
+      scrollbarBg.visible = false;
+      return;
+    }
+    scrollbarThumb.visible = true;
+    scrollbarBg.visible = true;
+
+    // Calculate thumb height based on visible vs total content ratio
+    const totalContentHeight =
+      improvements.length * (ITEM_HEIGHT + ITEM_SPACING) - ITEM_SPACING;
+    const thumbHeight = Math.max(
+      20,
+      (SCROLLABLE_HEIGHT / totalContentHeight) * SCROLLABLE_HEIGHT
+    );
+    const thumbMaxY = TITLE_HEIGHT + SCROLLABLE_HEIGHT - thumbHeight;
+    const thumbY =
+      TITLE_HEIGHT +
+      (scrollPosition / maxScroll) * (SCROLLABLE_HEIGHT - thumbHeight);
+
+    scrollbarThumb.clear();
+    scrollbarThumb.rect(0, 0, SCROLLBAR_WIDTH - 2, thumbHeight);
+    scrollbarThumb.fill(0x666666);
+    scrollbarThumb.y = Math.max(TITLE_HEIGHT + 1, Math.min(thumbMaxY, thumbY));
+  }
+
+  function updateScrollPosition(newPosition: number) {
+    scrollPosition = Math.max(0, Math.min(maxScroll, newPosition));
+    itemsContainer.y = TITLE_HEIGHT - scrollPosition;
+    updateScrollbar();
+  }
+
+  // Add wheel event listener for scrolling
+  const handleWheel = (e: WheelEvent) => {
+    if (!container.visible) return;
+
+    // Check if mouse is over the menu
+    const menuRect = {
+      left: container.x,
+      top: container.y,
+      right: container.x + MENU_WIDTH,
+      bottom: container.y + MENU_HEIGHT,
+    };
+
+    if (
+      e.clientX >= menuRect.left &&
+      e.clientX <= menuRect.right &&
+      e.clientY >= menuRect.top &&
+      e.clientY <= menuRect.bottom
+    ) {
+      e.preventDefault();
+      const delta = e.deltaY || e.deltaX || 0;
+      updateScrollPosition(scrollPosition + delta * 0.5);
+    }
+  };
+
+  window.addEventListener("wheel", handleWheel, { passive: false });
 
   // Center menu on screen
   container.x = (window.innerWidth - MENU_WIDTH) / 2;
@@ -173,6 +273,18 @@ export function createImprovementsMenu(
       const item = createImprovementItem(improvement, index, hasImprovement);
       itemsContainer.addChild(item);
     });
+
+    // Calculate max scroll based on content height
+    const totalContentHeight =
+      improvements.length * (ITEM_HEIGHT + ITEM_SPACING) - ITEM_SPACING;
+    maxScroll = Math.max(0, totalContentHeight - SCROLLABLE_HEIGHT);
+
+    // Reset scroll position if content is smaller than viewport
+    if (scrollPosition > maxScroll) {
+      scrollPosition = maxScroll;
+    }
+
+    updateScrollPosition(scrollPosition);
   }
 
   // Initial update
@@ -189,6 +301,9 @@ export function createImprovementsMenu(
     update: (newImprovements: Improvement[]) => {
       improvements = newImprovements;
       updateItems();
+    },
+    destroy: () => {
+      window.removeEventListener("wheel", handleWheel);
     },
   };
 }

@@ -86,7 +86,7 @@ export function createMap(config: MapConfig): {
 
       // Randomly place trees (20% chance), but not in spawn zone
       if (!isInSpawnZone && Math.random() < 0.2) {
-        const tree = createTree();
+        const tree = createTree(3); // Default tree health is 3
         const treeX = x * TILE_SIZE + TILE_SIZE / 2;
         const treeY = y * TILE_SIZE + TILE_SIZE / 2;
 

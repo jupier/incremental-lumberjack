@@ -108,6 +108,35 @@ const improvements: Improvement[] = [
     cost: 15,
     purchased: false,
   },
+  {
+    id: "sharpened_blade",
+    name: "Sharpened Blade",
+    description: IMPROVEMENT_EFFECTS.sharpened_blade.description,
+    cost: 20,
+    purchased: false,
+  },
+  {
+    id: "area_chop",
+    name: "Area Chop",
+    description: IMPROVEMENT_EFFECTS.area_chop.description,
+    cost: 50,
+    purchased: false,
+  },
+  {
+    id: "backpack_upgrade",
+    name: "Backpack Upgrade",
+    description: IMPROVEMENT_EFFECTS.backpack_upgrade.description,
+    cost: 20,
+    purchased: false,
+  },
+  {
+    id: "auto_collect",
+    name: "Auto-Collect",
+    description: IMPROVEMENT_EFFECTS.auto_collect.description,
+    cost: 40,
+    purchased: false,
+    requires: "backpack_upgrade", // Requires Backpack Upgrade
+  },
 ];
 
 const {
@@ -115,50 +144,76 @@ const {
   show: showImprovementsMenu,
   hide: hideImprovementsMenu,
   update: updateImprovementsMenu,
-} = createImprovementsMenu(improvements, (improvementId: string) => {
-  const improvement = improvements.find((imp) => imp.id === improvementId);
-  if (
-    improvement &&
-    !improvement.purchased &&
-    globalWoodCount >= improvement.cost
-  ) {
-    // Purchase the improvement through state manager
-    const purchased = playerStateManager.purchaseImprovement(improvementId);
-    if (purchased) {
-      globalWoodCount -= improvement.cost;
-      improvement.purchased = true;
-      updateWoodCount(globalWoodCount);
-      updateImprovementsMenu(improvements);
-
-      // Get updated config
-      const config = playerStateManager.getConfig();
-
-      // Update player cooldown if axe was improved
-      if (
-        improvementId === "improved_axe" &&
-        playerMovement.updateCooldownDuration
-      ) {
-        // Use the actual cooldown from config (supports future multi-level improvements)
-        const isImproved =
-          config.axeCooldownDuration <
-          DEFAULT_PLAYER_CONFIG.axeCooldownDuration;
-        playerMovement.updateCooldownDuration(isImproved);
+} = createImprovementsMenu(
+  improvements,
+  (improvementId: string) => {
+    const improvement = improvements.find((imp) => imp.id === improvementId);
+    if (
+      improvement &&
+      !improvement.purchased &&
+      globalWoodCount >= improvement.cost
+    ) {
+      // Check prerequisites
+      if (improvementId === "auto_collect") {
+        if (!playerStateManager.hasImprovement("backpack_upgrade")) {
+          // Auto-Collect requires Backpack Upgrade
+          return;
+        }
       }
 
-      // Update wood slot capacity display if capacity was increased
-      if (improvementId === "increased_wood_capacity") {
-        const woodSlot = slots.find((slot) => slot.isWood);
-        if (woodSlot) {
-          woodSlot.capacity = config.woodInventoryCapacity;
-          if (woodSlot.countText) {
-            const count = woodSlot.count || 0;
-            woodSlot.countText.text = `${count}/${config.woodInventoryCapacity}`;
+      // Purchase the improvement through state manager
+      const purchased = playerStateManager.purchaseImprovement(improvementId);
+      if (purchased) {
+        globalWoodCount -= improvement.cost;
+        improvement.purchased = true;
+        updateWoodCount(globalWoodCount);
+        updateImprovementsMenu(improvements);
+
+        // Get updated config
+        const config = playerStateManager.getConfig();
+
+        // Update player cooldown if axe was improved
+        if (
+          improvementId === "improved_axe" &&
+          playerMovement.updateCooldownDuration
+        ) {
+          // Use the actual cooldown from config (supports future multi-level improvements)
+          const isImproved =
+            config.axeCooldownDuration <
+            DEFAULT_PLAYER_CONFIG.axeCooldownDuration;
+          playerMovement.updateCooldownDuration(isImproved);
+        }
+
+        // Update wood slot capacity display if capacity was increased
+        if (
+          improvementId === "increased_wood_capacity" ||
+          improvementId === "backpack_upgrade"
+        ) {
+          const woodSlot = slots.find((slot) => slot.isWood);
+          if (woodSlot) {
+            woodSlot.capacity = config.woodInventoryCapacity;
+            if (woodSlot.countText) {
+              const count = woodSlot.count || 0;
+              woodSlot.countText.text = `${count}/${config.woodInventoryCapacity}`;
+            }
           }
+        }
+
+        // Update existing trees' health if Sharpened Blade was purchased
+        if (improvementId === "sharpened_blade") {
+          treesContainer.children.forEach((child) => {
+            const tree = child as any;
+            if (tree.health && tree.health > config.treeMaxHealth) {
+              tree.health = config.treeMaxHealth;
+              tree.maxHealth = config.treeMaxHealth;
+            }
+          });
         }
       }
     }
-  }
-});
+  },
+  (improvementId: string) => playerStateManager.hasImprovement(improvementId)
+);
 app.stage.addChild(improvementsMenu);
 
 // Track player position for minimap (will be updated by setupPlayerMovement)
@@ -229,7 +284,8 @@ const playerMovement = setupPlayerMovement(
     const config = playerStateManager.getConfig();
     return addWoodToBar(weaponBar, slots, config.woodInventoryCapacity);
   },
-  initialConfig.axeCooldownDuration < 1.0 // Check if improved (cooldown < 1.0 means improved)
+  initialConfig, // Pass initial config
+  () => playerStateManager.getConfig() // Pass getter function for dynamic config updates
 );
 
 // Initialize minimap with player position

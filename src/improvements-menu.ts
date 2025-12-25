@@ -6,6 +6,7 @@ export interface Improvement {
   description: string;
   cost: number;
   purchased: boolean;
+  requires?: string; // ID of required improvement
 }
 
 export interface ImprovementsState {
@@ -15,7 +16,8 @@ export interface ImprovementsState {
 
 export function createImprovementsMenu(
   improvements: Improvement[],
-  onPurchase: (improvementId: string) => void
+  onPurchase: (improvementId: string) => void,
+  hasImprovement?: (improvementId: string) => boolean
 ): {
   container: Container;
   show: () => void;
@@ -64,7 +66,8 @@ export function createImprovementsMenu(
 
   function createImprovementItem(
     improvement: Improvement,
-    index: number
+    index: number,
+    hasImprovement?: (improvementId: string) => boolean
   ): Container {
     const itemContainer = new Container();
     itemContainer.y = index * (ITEM_HEIGHT + ITEM_SPACING);
@@ -127,20 +130,27 @@ export function createImprovementsMenu(
     // Buy button (if not purchased)
     if (!improvement.purchased) {
       const buttonBg = new Graphics();
+      const requirementMet = improvement.requires
+        ? hasImprovement && hasImprovement(improvement.requires)
+        : true;
+      const isLocked = improvement.requires && !requirementMet;
+
       buttonBg.rect(0, 0, 80, 30);
-      buttonBg.fill(0x4169e1);
-      buttonBg.stroke({ width: 2, color: 0x5a7ae1 });
+      buttonBg.fill(isLocked ? 0x666666 : 0x4169e1);
+      buttonBg.stroke({ width: 2, color: isLocked ? 0x888888 : 0x5a7ae1 });
       buttonBg.x = MENU_WIDTH - MENU_PADDING * 2 - 90;
       buttonBg.y = ITEM_HEIGHT - 40;
       buttonBg.eventMode = "static";
-      buttonBg.cursor = "pointer";
-      buttonBg.on("pointerdown", () => {
-        onPurchase(improvement.id);
-      });
+      buttonBg.cursor = isLocked ? "not-allowed" : "pointer";
+      if (!isLocked) {
+        buttonBg.on("pointerdown", () => {
+          onPurchase(improvement.id);
+        });
+      }
       itemContainer.addChild(buttonBg);
 
       const buttonText = new Text({
-        text: "Buy",
+        text: isLocked ? "Locked" : "Buy",
         style: new TextStyle({
           fontFamily: "Arial",
           fontSize: 12,
@@ -160,7 +170,7 @@ export function createImprovementsMenu(
   function updateItems() {
     itemsContainer.removeChildren();
     improvements.forEach((improvement, index) => {
-      const item = createImprovementItem(improvement, index);
+      const item = createImprovementItem(improvement, index, hasImprovement);
       itemsContainer.addChild(item);
     });
   }

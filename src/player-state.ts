@@ -12,11 +12,11 @@ export interface PlayerConfig {
 
   // Combat
   axeCooldownDuration: number; // in seconds
+  treeMaxHealth: number; // Maximum health of trees (default 3, reduced to 2 with Sharpened Blade)
+  areaChopEnabled: boolean; // Hit all trees in 3x3 area
 
-  // Future improvements can be added here:
-  // movementSpeed: number;
-  // treeHealthReduction: number;
-  // etc.
+  // Collection
+  autoCollectEnabled: boolean; // Automatically collect wood when walking over it
 }
 
 export interface ImprovementEffect {
@@ -31,6 +31,9 @@ export interface ImprovementEffect {
 export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   woodInventoryCapacity: 1,
   axeCooldownDuration: 1.0, // 1 second
+  treeMaxHealth: 3, // Trees have 3 health by default
+  areaChopEnabled: false,
+  autoCollectEnabled: false,
 };
 
 /**
@@ -52,6 +55,38 @@ export const IMPROVEMENT_EFFECTS: Record<string, ImprovementEffect> = {
     apply: (config: PlayerConfig) => ({
       ...config,
       woodInventoryCapacity: config.woodInventoryCapacity + 1,
+    }),
+  },
+  sharpened_blade: {
+    id: "sharpened_blade",
+    description: "Trees take 2 hits instead of 3",
+    apply: (config: PlayerConfig) => ({
+      ...config,
+      treeMaxHealth: 2, // Reduce tree health from 3 to 2
+    }),
+  },
+  area_chop: {
+    id: "area_chop",
+    description: "Hit all trees in a 3x3 area around you",
+    apply: (config: PlayerConfig) => ({
+      ...config,
+      areaChopEnabled: true,
+    }),
+  },
+  backpack_upgrade: {
+    id: "backpack_upgrade",
+    description: "Increases wood inventory capacity by 2",
+    apply: (config: PlayerConfig) => ({
+      ...config,
+      woodInventoryCapacity: config.woodInventoryCapacity + 2,
+    }),
+  },
+  auto_collect: {
+    id: "auto_collect",
+    description: "Automatically collect wood when walking over it",
+    apply: (config: PlayerConfig) => ({
+      ...config,
+      autoCollectEnabled: true,
     }),
   },
 };

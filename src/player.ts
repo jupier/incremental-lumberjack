@@ -1,6 +1,7 @@
 import { Graphics, Application, Container } from "pixi.js";
 import { TileData } from "./map";
 import { createWoodPiece } from "./wood";
+import { PlayerConfig } from "./player-state";
 
 export interface PlayerPosition {
   tileX: number;
@@ -91,7 +92,8 @@ export function setupPlayerMovement(
   onMove?: (position: PlayerPosition) => void,
   onCooldownUpdate?: (progress: number) => void,
   onWoodCollected?: () => boolean,
-  improvedAxe?: boolean
+  config?: PlayerConfig,
+  getConfig?: () => PlayerConfig
 ): PlayerMovementResult {
   let currentTileX = Math.floor(mapWidth / 2);
   let currentTileY = Math.floor(mapHeight / 2);
@@ -121,17 +123,23 @@ export function setupPlayerMovement(
 
   // Hit cooldown system
   let hitCooldown = 0;
-  let hitCooldownDuration = improvedAxe ? 0.5 : 1.0; // 0.5 seconds if improved, 1 second otherwise
+  let hitCooldownDuration = config?.axeCooldownDuration || 1.0;
   let canHit = true;
 
   // Function to update cooldown duration (for improvements)
   const updateCooldownDuration = (improved: boolean) => {
-    hitCooldownDuration = improved ? 0.5 : 1.0;
+    if (getConfig) {
+      const currentConfig = getConfig();
+      hitCooldownDuration = currentConfig.axeCooldownDuration;
+    } else {
+      hitCooldownDuration = improved ? 0.5 : 1.0;
+    }
   };
 
   window.addEventListener("keydown", (e) => {
     if (e.code === "Space" && canHit && !isMoving) {
       // Perform hit
+      const currentConfig = getConfig ? getConfig() : config;
       checkTreeHit(
         player,
         currentTileX,
@@ -141,7 +149,8 @@ export function setupPlayerMovement(
         mapHeight,
         tileSize,
         treesContainer,
-        woodContainer
+        woodContainer,
+        currentConfig
       );
       // Start cooldown
       hitCooldown = hitCooldownDuration;
@@ -260,6 +269,31 @@ export function setupPlayerMovement(
         targetX = currentTileX * tileSize + tileSize / 2;
         targetY = currentTileY * tileSize + tileSize / 2;
         isMoving = true;
+
+        // Auto-collect wood if enabled
+        const currentConfig = getConfig ? getConfig() : config;
+        if (currentConfig?.autoCollectEnabled) {
+          const currentTile = tiles[currentTileY]?.[currentTileX];
+          if (
+            currentTile &&
+            currentTile.item === "wood" &&
+            currentTile.woodPieces &&
+            currentTile.woodPieces.length > 0
+          ) {
+            // Try to collect wood (respects capacity)
+            if (onWoodCollected && onWoodCollected()) {
+              // Remove the first wood piece
+              const woodPiece = currentTile.woodPieces.shift()!;
+              woodContainer.removeChild(woodPiece);
+
+              // If no more wood pieces, update tile item
+              if (currentTile.woodPieces.length === 0) {
+                currentTile.item = null;
+                currentTile.woodPieces = undefined;
+              }
+            }
+          }
+        }
       }
     }
   });
@@ -280,46 +314,74 @@ function checkTreeHit(
   mapHeight: number,
   tileSize: number,
   treesContainer: Container,
-  woodContainer: Container
+  woodContainer: Container,
+  config?: PlayerConfig
 ): void {
-  // Calculate target tile based on player direction
-  let targetTileX = playerTileX;
-  let targetTileY = playerTileY;
+  const areaChop = config?.areaChopEnabled || false;
+  const treeMaxHealth = config?.treeMaxHealth || 3;
 
-  switch (player.direction) {
-    case "up":
-      targetTileY = playerTileY - 1;
-      break;
-    case "down":
-      targetTileY = playerTileY + 1;
-      break;
-    case "left":
-      targetTileX = playerTileX - 1;
-      break;
-    case "right":
-      targetTileX = playerTileX + 1;
-      break;
+  // Determine which tiles to hit
+  const tilesToHit: Array<{ x: number; y: number }> = [];
+
+  if (areaChop) {
+    // Hit all trees in 3x3 area around player
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const tileX = playerTileX + dx;
+        const tileY = playerTileY + dy;
+        if (tileX >= 0 && tileX < mapWidth && tileY >= 0 && tileY < mapHeight) {
+          tilesToHit.push({ x: tileX, y: tileY });
+        }
+      }
+    }
+  } else {
+    // Hit single tile in front of player
+    let targetTileX = playerTileX;
+    let targetTileY = playerTileY;
+
+    switch (player.direction) {
+      case "up":
+        targetTileY = playerTileY - 1;
+        break;
+      case "down":
+        targetTileY = playerTileY + 1;
+        break;
+      case "left":
+        targetTileX = playerTileX - 1;
+        break;
+      case "right":
+        targetTileX = playerTileX + 1;
+        break;
+    }
+
+    if (
+      targetTileX >= 0 &&
+      targetTileX < mapWidth &&
+      targetTileY >= 0 &&
+      targetTileY < mapHeight
+    ) {
+      tilesToHit.push({ x: targetTileX, y: targetTileY });
+    }
   }
 
-  // Check if target tile is valid and contains a tree
-  if (
-    targetTileX >= 0 &&
-    targetTileX < mapWidth &&
-    targetTileY >= 0 &&
-    targetTileY < mapHeight
-  ) {
-    const targetTile = tiles[targetTileY]?.[targetTileX];
+  // Hit all trees in the target tiles
+  tilesToHit.forEach(({ x, y }) => {
+    const targetTile = tiles[y]?.[x];
     if (targetTile && targetTile.item === "tree" && targetTile.tree) {
       const tree = targetTile.tree;
 
+      // Get current health or use max health from config
+      const currentHealth = (tree as any).health ?? treeMaxHealth;
+      const newHealth = currentHealth - 1;
+
       // Decrease tree health
-      (tree as any).health = ((tree as any).health || 3) - 1;
+      (tree as any).health = newHealth;
 
       // Shake the tree
       shakeTree(tree);
 
       // Check if tree health reached 0
-      if ((tree as any).health <= 0) {
+      if (newHealth <= 0) {
         // Remove tree from container
         treesContainer.removeChild(tree);
 
@@ -329,8 +391,8 @@ function checkTreeHit(
         targetTile.woodPieces = [];
 
         // Create 3 wood pieces on the tile
-        const tileCenterX = targetTileX * tileSize + tileSize / 2;
-        const tileCenterY = targetTileY * tileSize + tileSize / 2;
+        const tileCenterX = x * tileSize + tileSize / 2;
+        const tileCenterY = y * tileSize + tileSize / 2;
 
         // Position wood pieces in a small area around tile center
         const offsets = [
@@ -348,7 +410,7 @@ function checkTreeHit(
         }
       }
     }
-  }
+  });
 }
 
 function checkWoodCollection(

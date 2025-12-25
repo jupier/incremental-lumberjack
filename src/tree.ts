@@ -1,6 +1,6 @@
 import { Graphics } from "pixi.js";
 
-export function createTree(): Graphics {
+export function createTree(maxHealth: number = 3): Graphics {
   // Create a simple tree using Graphics
   const tree = new Graphics();
 
@@ -22,8 +22,8 @@ export function createTree(): Graphics {
   tree.cursor = "pointer";
 
   // Add health property to tree
-  (tree as any).health = 3;
-  (tree as any).maxHealth = 3;
+  (tree as any).health = maxHealth;
+  (tree as any).maxHealth = maxHealth;
 
   return tree;
 }

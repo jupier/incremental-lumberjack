@@ -37,9 +37,18 @@ export const IMPROVEMENT_EFFECTS: Record<
     ...config,
     woodInventoryCapacity: config.woodInventoryCapacity + 2,
   }),
-  auto_collect: (config: PlayerConfig) => ({
+  // Wagons
+  automatic_wagon: (config: PlayerConfig) => ({
     ...config,
-    autoCollectEnabled: true,
+    wagonCount: Math.max(1, config.wagonCount),
+  }),
+  wagon_speed_1: (config: PlayerConfig) => ({
+    ...config,
+    wagonSpeedMultiplier: config.wagonSpeedMultiplier + 0.25,
+  }),
+  wagon_capacity_1: (config: PlayerConfig) => ({
+    ...config,
+    wagonCapacity: config.wagonCapacity + 1,
   }),
 };
 
@@ -54,6 +63,7 @@ export const IMPROVEMENTS_DATA: Record<
     description: string;
     cost: number;
     requires?: string; // ID of required improvement
+    repeatable?: boolean;
   }
 > = {
   improved_axe: {
@@ -86,12 +96,28 @@ export const IMPROVEMENTS_DATA: Record<
     description: "Increases wood inventory capacity by 2",
     cost: 20,
   },
-  auto_collect: {
-    id: "auto_collect",
-    name: "Auto-Collect",
-    description: "Automatically collect wood when walking over it",
-    cost: 40,
-    requires: "backpack_upgrade", // Requires Backpack Upgrade
+  automatic_wagon: {
+    id: "automatic_wagon",
+    name: "Automatic Wagon",
+    description:
+      "A slow wagon that automatically collects wood and brings it to the collect zone",
+    cost: 0,
+  },
+  wagon_speed_1: {
+    id: "wagon_speed_1",
+    name: "Faster Wagon",
+    description: "Increases wagon speed",
+    cost: 0,
+    requires: "automatic_wagon",
+    repeatable: true,
+  },
+  wagon_capacity_1: {
+    id: "wagon_capacity_1",
+    name: "Bigger Wagon",
+    description: "Increases wagon capacity by 1",
+    cost: 0,
+    requires: "automatic_wagon",
+    repeatable: true,
   },
 };
 
@@ -106,6 +132,8 @@ export function getAllImprovements(): Improvement[] {
     cost: data.cost,
     purchased: false, // Will be updated by the menu system
     requires: data.requires,
+    repeatable: data.repeatable,
+    level: 0,
   }));
 }
 

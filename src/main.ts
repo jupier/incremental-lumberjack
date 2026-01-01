@@ -15,6 +15,7 @@ import { createWoodCounter } from "./wood-counter";
 import { createImprovementsMenu, Improvement } from "./improvements-menu";
 import { PlayerStateManager, DEFAULT_PLAYER_CONFIG } from "./player-state";
 import { getAllImprovements } from "./improvements";
+import { createWagon, setupWagon, Wagon } from "./wagon";
 
 // Create and initialize PixiJS application with full screen
 const app = new Application();
@@ -111,6 +112,9 @@ let globalWoodCount = 0;
 // Initialize player state manager
 const playerStateManager = new PlayerStateManager();
 
+// Store wagon reference (will be created when improvement is purchased)
+let wagon: Wagon | null = null;
+
 // Create improvements menu - get all improvements from centralized file
 const improvements: Improvement[] = getAllImprovements();
 
@@ -125,22 +129,19 @@ const {
     const improvement = improvements.find((imp) => imp.id === improvementId);
     if (
       improvement &&
-      !improvement.purchased &&
+      (!improvement.purchased || improvement.repeatable) &&
       globalWoodCount >= improvement.cost
     ) {
-      // Check prerequisites
-      if (improvementId === "auto_collect") {
-        if (!playerStateManager.hasImprovement("backpack_upgrade")) {
-          // Auto-Collect requires Backpack Upgrade
-          return;
-        }
-      }
-
       // Purchase the improvement through state manager
       const purchased = playerStateManager.purchaseImprovement(improvementId);
       if (purchased) {
         globalWoodCount -= improvement.cost;
-        improvement.purchased = true;
+        if (improvement.repeatable) {
+          improvement.level =
+            playerStateManager.getImprovementLevel(improvementId);
+        } else {
+          improvement.purchased = true;
+        }
         updateWoodCount(globalWoodCount);
         updateImprovementsMenu(improvements);
 
@@ -183,6 +184,57 @@ const {
               tree.maxHealth = config.treeMaxHealth;
             }
           });
+        }
+
+        // Create wagon if Automatic Wagon was purchased
+        if (improvementId === "automatic_wagon" && !wagon) {
+          const collectZoneCenter = {
+            tileX: Math.floor(mapWidth / 2),
+            tileY: Math.floor(mapHeight / 2),
+          };
+
+          const wagonContainer = createWagon();
+          wagon = {
+            container: wagonContainer,
+            tileX: collectZoneCenter.tileX,
+            tileY: collectZoneCenter.tileY,
+            targetTileX: null,
+            targetTileY: null,
+            carriedWoodCount: 0,
+            capacity: config.wagonCapacity,
+            speed: 30 * config.wagonSpeedMultiplier, // Slow base speed with multiplier
+          };
+
+          // Position wagon at collect zone center
+          wagonContainer.x = collectZoneCenter.tileX * tileSize + tileSize / 2;
+          wagonContainer.y = collectZoneCenter.tileY * tileSize + tileSize / 2;
+
+          // Add wagon to world at the right layer (above grass/wood, below player)
+          // Insert before player container to ensure it's below player
+          const playerIndex = world.getChildIndex(player.container);
+          world.addChildAt(wagonContainer, playerIndex);
+
+          // Setup wagon movement and collection
+          setupWagon(
+            wagon,
+            app,
+            tileSize,
+            mapWidth,
+            mapHeight,
+            tiles,
+            woodContainer,
+            (count: number) => {
+              globalWoodCount += count;
+              updateWoodCount(globalWoodCount);
+            },
+            isInCollectZone
+          );
+        }
+
+        // Apply wagon upgrades to existing wagon immediately
+        if (wagon) {
+          wagon.capacity = config.wagonCapacity;
+          wagon.speed = 30 * config.wagonSpeedMultiplier;
         }
       }
     }

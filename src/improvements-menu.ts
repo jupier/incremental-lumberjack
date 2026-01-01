@@ -7,6 +7,8 @@ export interface Improvement {
   cost: number;
   purchased: boolean;
   requires?: string; // ID of required improvement
+  repeatable?: boolean;
+  level?: number; // only meaningful when repeatable === true
 }
 
 export interface ImprovementsState {
@@ -209,17 +211,21 @@ export function createImprovementsMenu(
     descText.y = 35;
     itemContainer.addChild(descText);
 
-    // Cost or purchased status
+    // Cost / level / purchased status
     const costStyle = new TextStyle({
       fontFamily: "Arial",
       fontSize: 14,
       fill: improvement.purchased ? 0x4a8a4a : 0xffaa00,
       fontWeight: "bold",
     });
+    const levelText =
+      improvement.repeatable && (improvement.level ?? 0) > 0
+        ? ` (Level ${improvement.level})`
+        : "";
     const costText = new Text({
       text: improvement.purchased
         ? "PURCHASED"
-        : `Cost: ${improvement.cost} wood`,
+        : `Cost: ${improvement.cost} wood${levelText}`,
       style: costStyle,
     });
     costText.x = MENU_WIDTH - MENU_PADDING * 2 - 150;
@@ -227,8 +233,8 @@ export function createImprovementsMenu(
     costText.anchor.set(0, 0.5);
     itemContainer.addChild(costText);
 
-    // Buy button (if not purchased)
-    if (!improvement.purchased) {
+    // Buy/upgrade button
+    if (!improvement.purchased || improvement.repeatable) {
       const buttonBg = new Graphics();
       const requirementMet = improvement.requires
         ? hasImprovement && hasImprovement(improvement.requires)
@@ -250,7 +256,7 @@ export function createImprovementsMenu(
       itemContainer.addChild(buttonBg);
 
       const buttonText = new Text({
-        text: isLocked ? "Locked" : "Buy",
+        text: isLocked ? "Locked" : improvement.repeatable ? "Upgrade" : "Buy",
         style: new TextStyle({
           fontFamily: "Arial",
           fontSize: 12,

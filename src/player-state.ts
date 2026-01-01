@@ -5,7 +5,7 @@
  * Improvements are defined in improvements.ts
  */
 
-import { getImprovementEffect } from "./improvements";
+import { getImprovementData, getImprovementEffect } from "./improvements";
 
 export interface PlayerConfig {
   // Inventory
@@ -16,8 +16,10 @@ export interface PlayerConfig {
   treeMaxHealth: number; // Maximum health of trees (default 3, reduced to 2 with Sharpened Blade)
   areaChopEnabled: boolean; // Hit all trees in 3x3 area
 
-  // Collection
-  autoCollectEnabled: boolean; // Automatically collect wood when walking over it
+  // Wagons
+  wagonCount: number; // Number of active wagons
+  wagonCapacity: number; // How many wood pieces a wagon can carry before depositing
+  wagonSpeedMultiplier: number; // Multiplier applied to the wagon base speed
 }
 
 /**
@@ -28,7 +30,9 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   axeCooldownDuration: 1.0, // 1 second
   treeMaxHealth: 3, // Trees have 3 health by default
   areaChopEnabled: false,
-  autoCollectEnabled: false,
+  wagonCount: 0,
+  wagonCapacity: 1,
+  wagonSpeedMultiplier: 1,
 };
 
 /**
@@ -37,7 +41,7 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
  */
 export class PlayerStateManager {
   private config: PlayerConfig;
-  private purchasedImprovements: Set<string> = new Set();
+  private improvementLevels: Map<string, number> = new Map();
 
   constructor(initialConfig: PlayerConfig = DEFAULT_PLAYER_CONFIG) {
     this.config = { ...initialConfig };
@@ -47,9 +51,10 @@ export class PlayerStateManager {
    * Purchase an improvement and apply its effect
    */
   purchaseImprovement(improvementId: string): boolean {
-    if (this.purchasedImprovements.has(improvementId)) {
-      return false; // Already purchased
-    }
+    const data = getImprovementData(improvementId);
+    const isRepeatable = Boolean(data?.repeatable);
+    const currentLevel = this.improvementLevels.get(improvementId) ?? 0;
+    if (!isRepeatable && currentLevel > 0) return false; // Already purchased
 
     const effect = getImprovementEffect(improvementId);
     if (!effect) {
@@ -58,7 +63,7 @@ export class PlayerStateManager {
 
     // Apply the improvement effect
     this.config = effect(this.config);
-    this.purchasedImprovements.add(improvementId);
+    this.improvementLevels.set(improvementId, currentLevel + 1);
     return true;
   }
 
@@ -66,7 +71,11 @@ export class PlayerStateManager {
    * Check if an improvement is purchased
    */
   hasImprovement(improvementId: string): boolean {
-    return this.purchasedImprovements.has(improvementId);
+    return (this.improvementLevels.get(improvementId) ?? 0) > 0;
+  }
+
+  getImprovementLevel(improvementId: string): number {
+    return this.improvementLevels.get(improvementId) ?? 0;
   }
 
   /**
@@ -80,7 +89,11 @@ export class PlayerStateManager {
    * Get all purchased improvements
    */
   getPurchasedImprovements(): ReadonlySet<string> {
-    return new Set(this.purchasedImprovements);
+    return new Set(
+      [...this.improvementLevels.entries()]
+        .filter(([, level]) => level > 0)
+        .map(([id]) => id)
+    );
   }
 
   /**
@@ -88,6 +101,6 @@ export class PlayerStateManager {
    */
   reset(): void {
     this.config = { ...DEFAULT_PLAYER_CONFIG };
-    this.purchasedImprovements.clear();
+    this.improvementLevels.clear();
   }
 }

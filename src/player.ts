@@ -274,30 +274,6 @@ export function setupPlayerMovement(
         targetY = currentTileY * tileSize + tileSize / 2;
         isMoving = true;
 
-        // Auto-collect wood if enabled
-        const currentConfig = getConfig ? getConfig() : config;
-        if (currentConfig?.autoCollectEnabled) {
-          const currentTile = tiles[currentTileY]?.[currentTileX];
-          if (
-            currentTile &&
-            currentTile.item === "wood" &&
-            currentTile.woodPieces &&
-            currentTile.woodPieces.length > 0
-          ) {
-            // Try to collect wood (respects capacity)
-            if (onWoodCollected && onWoodCollected()) {
-              // Remove the first wood piece
-              const woodPiece = currentTile.woodPieces.shift()!;
-              woodContainer.removeChild(woodPiece);
-
-              // If no more wood pieces, update tile item
-              if (currentTile.woodPieces.length === 0) {
-                currentTile.item = null;
-                currentTile.woodPieces = undefined;
-              }
-            }
-          }
-        }
       }
     }
   });

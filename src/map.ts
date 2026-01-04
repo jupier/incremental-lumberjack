@@ -1,5 +1,10 @@
 import { Graphics, Container } from "pixi.js";
-import { createTree } from "./tree";
+import { createTree, TreeType } from "./tree";
+import {
+  COLLECT_ZONE_SIZE_TILES,
+  getCollectZoneBounds,
+  isInCollectZoneClearArea,
+} from "./collect-zone";
 
 const TILE_SIZE = 48; // Size of each tile in pixels
 
@@ -15,6 +20,7 @@ export interface TileData {
   y: number; // Tile y coordinate
   item: TileItem; // Item on this tile
   tree?: Graphics; // Reference to tree graphics if item is "tree"
+  treeType?: TreeType;
   woodPieces?: Graphics[]; // Array of wood piece graphics if item is "wood"
 }
 
@@ -28,33 +34,26 @@ export function createMap(config: MapConfig): {
   const treesContainer = new Container();
   const collectZoneContainer = new Container();
   const tiles: TileData[][] = [];
+  const TREE_DENSITY = 0.75; // 75% of tiles get trees outside the clear area
 
-  // Calculate center spawn point
-  const centerX = Math.floor(config.width / 2);
-  const centerY = Math.floor(config.height / 2);
-  const spawnRadius = 3;
-
-  // Create collect zone (3x3 tiles at center)
-  const collectZoneSize = 3;
-  const collectZoneStartX = centerX - 1; // 3x3 zone centered at centerX, centerY
-  const collectZoneStartY = centerY - 1;
+  const collectZoneBounds = getCollectZoneBounds(config.width, config.height);
 
   const collectZone = new Graphics();
   // Draw a semi-transparent overlay for the collect zone
   collectZone.rect(
-    collectZoneStartX * TILE_SIZE,
-    collectZoneStartY * TILE_SIZE,
-    collectZoneSize * TILE_SIZE,
-    collectZoneSize * TILE_SIZE
+    collectZoneBounds.startTileX * TILE_SIZE,
+    collectZoneBounds.startTileY * TILE_SIZE,
+    COLLECT_ZONE_SIZE_TILES * TILE_SIZE,
+    COLLECT_ZONE_SIZE_TILES * TILE_SIZE
   );
   collectZone.fill({ color: 0x4169e1, alpha: 0.3 }); // Blue tint with transparency
 
   // Draw border around the collect zone
   collectZone.rect(
-    collectZoneStartX * TILE_SIZE,
-    collectZoneStartY * TILE_SIZE,
-    collectZoneSize * TILE_SIZE,
-    collectZoneSize * TILE_SIZE
+    collectZoneBounds.startTileX * TILE_SIZE,
+    collectZoneBounds.startTileY * TILE_SIZE,
+    COLLECT_ZONE_SIZE_TILES * TILE_SIZE,
+    COLLECT_ZONE_SIZE_TILES * TILE_SIZE
   );
   collectZone.stroke({ width: 3, color: 0x4169e1 }); // Blue border
 
@@ -80,15 +79,15 @@ export function createMap(config: MapConfig): {
   // Phase 2: Add trees in separate container
   for (let y = 0; y < config.height; y++) {
     for (let x = 0; x < config.width; x++) {
-      // Check if this tile is in the spawn zone (circular 5x5 area)
-      const distanceFromCenter = Math.sqrt(
-        Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2)
-      );
-      const isInSpawnZone = distanceFromCenter <= spawnRadius;
-
-      // Randomly place trees (20% chance), but not in spawn zone
-      if (!isInSpawnZone && Math.random() < 0.2) {
-        const tree = createTree(3); // Default tree health is 3
+      // Place trees on every tile except the 5x5 clear area around the collect zone
+      if (
+        !isInCollectZoneClearArea(x, y, config.width, config.height) &&
+        Math.random() < TREE_DENSITY
+      ) {
+        const roll = Math.random();
+        const treeType: TreeType =
+          roll < 0.08 ? "ancient" : roll < 0.25 ? "strong" : "normal";
+        const tree = createTree(treeType);
         const treeX = x * TILE_SIZE + TILE_SIZE / 2;
         const treeY = y * TILE_SIZE + TILE_SIZE / 2;
 
@@ -101,6 +100,7 @@ export function createMap(config: MapConfig): {
         // Update tile data with tree reference
         tiles[y][x].item = "tree";
         tiles[y][x].tree = tree;
+        tiles[y][x].treeType = treeType;
       }
     }
   }

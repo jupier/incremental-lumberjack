@@ -16,9 +16,12 @@ import { createImprovementsMenu, Improvement } from "./improvements-menu";
 import { PlayerStateManager, DEFAULT_PLAYER_CONFIG } from "./player-state";
 import { getAllImprovements } from "./improvements";
 import { createWagon, setupWagon, Wagon } from "./wagon";
+import { getCollectZoneCenter, isInCollectZone } from "./collect-zone";
 
 // Create and initialize PixiJS application with full screen
 const app = new Application();
+
+const BASE_WAGON_SPEED = 70; // pixels/sec (default wagon felt too slow)
 
 await app.init({
   width: window.innerWidth,
@@ -179,19 +182,19 @@ const {
         if (improvementId === "sharpened_blade") {
           treesContainer.children.forEach((child) => {
             const tree = child as any;
-            if (tree.health && tree.health > config.treeMaxHealth) {
-              tree.health = config.treeMaxHealth;
-              tree.maxHealth = config.treeMaxHealth;
+            const baseMaxHealth = tree.baseMaxHealth ?? tree.maxHealth ?? 3;
+            const reduction = Math.max(0, 3 - config.treeMaxHealth);
+            const effectiveMaxHealth = Math.max(1, baseMaxHealth - reduction);
+            if (tree.health && tree.health > effectiveMaxHealth) {
+              tree.health = effectiveMaxHealth;
             }
+            tree.maxHealth = effectiveMaxHealth;
           });
         }
 
         // Create wagon if Automatic Wagon was purchased
         if (improvementId === "automatic_wagon" && !wagon) {
-          const collectZoneCenter = {
-            tileX: Math.floor(mapWidth / 2),
-            tileY: Math.floor(mapHeight / 2),
-          };
+          const collectZoneCenter = getCollectZoneCenter(mapWidth, mapHeight);
 
           const wagonContainer = createWagon();
           wagon = {
@@ -202,7 +205,7 @@ const {
             targetTileY: null,
             carriedWoodCount: 0,
             capacity: config.wagonCapacity,
-            speed: 30 * config.wagonSpeedMultiplier, // Slow base speed with multiplier
+            speed: BASE_WAGON_SPEED * config.wagonSpeedMultiplier,
           };
 
           // Position wagon at collect zone center
@@ -234,7 +237,7 @@ const {
         // Apply wagon upgrades to existing wagon immediately
         if (wagon) {
           wagon.capacity = config.wagonCapacity;
-          wagon.speed = 30 * config.wagonSpeedMultiplier;
+          wagon.speed = BASE_WAGON_SPEED * config.wagonSpeedMultiplier;
         }
       }
     }
@@ -245,34 +248,13 @@ app.stage.addChild(improvementsMenu);
 
 // Track player position for minimap (will be updated by setupPlayerMovement)
 let currentPlayerPosition: PlayerPosition = {
-  tileX: Math.floor(mapWidth / 2),
-  tileY: Math.floor(mapHeight / 2),
+  tileX: getCollectZoneCenter(mapWidth, mapHeight).tileX,
+  tileY: getCollectZoneCenter(mapWidth, mapHeight).tileY,
 };
-
-// Helper function to check if player is in collect zone
-function isInCollectZone(
-  tileX: number,
-  tileY: number,
-  mapWidth: number,
-  mapHeight: number
-): boolean {
-  const centerX = Math.floor(mapWidth / 2);
-  const centerY = Math.floor(mapHeight / 2);
-  const collectZoneStartX = centerX - 1; // 3x3 zone centered at center
-  const collectZoneStartY = centerY - 1;
-  const collectZoneEndX = centerX + 1;
-  const collectZoneEndY = centerY + 1;
-
-  return (
-    tileX >= collectZoneStartX &&
-    tileX <= collectZoneEndX &&
-    tileY >= collectZoneStartY &&
-    tileY <= collectZoneEndY
-  );
-}
 
 // Setup player movement with z/q/s/d keys (tile-based)
 const initialConfig = playerStateManager.getConfig();
+const playerSpawn = getCollectZoneCenter(mapWidth, mapHeight);
 const playerMovement = setupPlayerMovement(
   player,
   app,
@@ -282,6 +264,8 @@ const playerMovement = setupPlayerMovement(
   tiles,
   treesContainer,
   woodContainer,
+  playerSpawn.tileX,
+  playerSpawn.tileY,
   (position) => {
     currentPlayerPosition = position;
     updateMinimapPlayer(

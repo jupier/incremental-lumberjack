@@ -1,5 +1,6 @@
 import { Graphics, Container } from "pixi.js";
 import { TileData } from "./map";
+import { COLLECT_ZONE_SIZE_TILES, getCollectZoneBounds } from "./collect-zone";
 
 const MINIMAP_PADDING = 10;
 const MINIMAP_WIDTH = 200;
@@ -35,7 +36,13 @@ export function createMinimap(
       tileGraphic.rect(pixelX, pixelY, scale, scale);
 
       if (tile.item === "tree") {
-        tileGraphic.fill(0x228b22); // Green for trees
+        if (tile.treeType === "ancient") {
+          tileGraphic.fill(0x1b4d8a); // Blue-ish
+        } else if (tile.treeType === "strong") {
+          tileGraphic.fill(0x0f6b1f); // Darker green
+        } else {
+          tileGraphic.fill(0x228b22); // Green
+        }
       } else {
         tileGraphic.fill(0x6b8e23); // Dark green for grass
       }
@@ -44,21 +51,17 @@ export function createMinimap(
     }
   }
 
-  // Draw collect zone (3x3 tiles at center of map)
-  const centerX = Math.floor(mapWidth / 2);
-  const centerY = Math.floor(mapHeight / 2);
-  const collectZoneSize = 3;
-  const collectZoneStartX = centerX - 1;
-  const collectZoneStartY = centerY - 1;
+  // Draw collect zone (3x3 tiles)
+  const collectZoneBounds = getCollectZoneBounds(mapWidth, mapHeight);
 
   const collectZoneGraphic = new Graphics();
-  const zonePixelX = MINIMAP_PADDING + collectZoneStartX * scale;
-  const zonePixelY = MINIMAP_PADDING + collectZoneStartY * scale;
+  const zonePixelX = MINIMAP_PADDING + collectZoneBounds.startTileX * scale;
+  const zonePixelY = MINIMAP_PADDING + collectZoneBounds.startTileY * scale;
   collectZoneGraphic.rect(
     zonePixelX,
     zonePixelY,
-    collectZoneSize * scale,
-    collectZoneSize * scale
+    COLLECT_ZONE_SIZE_TILES * scale,
+    COLLECT_ZONE_SIZE_TILES * scale
   );
   collectZoneGraphic.fill({ color: 0x4169e1, alpha: 0.5 }); // Blue for collect zone
   collectZoneGraphic.name = "collectZone";

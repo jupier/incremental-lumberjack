@@ -17,7 +17,71 @@ export type PlayerDirection = "up" | "down" | "left" | "right";
 export interface PlayerContainer {
   container: Container;
   body: Graphics;
+  axe: Graphics;
+  axeBaseRotation: number;
+  isAxeSwinging: boolean;
   direction: PlayerDirection;
+}
+
+function createAxe(): Graphics {
+  const axe = new Graphics();
+
+  // Handle
+  axe.rect(-2, 0, 4, 18);
+  axe.fill(0x8b5a2b);
+
+  // Blade (simple wedge)
+  // Mirrored compared to the initial version so it sits correctly in the hand
+  axe.moveTo(8, 4);
+  axe.lineTo(-8, 8);
+  axe.lineTo(8, 12);
+  axe.closePath();
+  axe.fill(0xc0c0c0);
+
+  // Pivot at the end of the handle so we can place it in the player's hand.
+  // Handle goes from y=0..18, so pivot y=18 anchors the grip.
+  axe.pivot.set(0, 18);
+
+  return axe;
+}
+
+function applyAxeRestPose(player: PlayerContainer): void {
+  const { axe, direction } = player;
+
+  // Default values
+  axe.scale.set(1);
+  axe.visible = true;
+  let baseRotation = 0;
+
+  switch (direction) {
+    case "right":
+      // Right hand is around (x=12, y=10) based on the arm rect at x=8..12, y=2..10
+      axe.x = 12;
+      axe.y = 10;
+      baseRotation = -0.6;
+      break;
+    case "left":
+      axe.x = -12;
+      axe.y = 10;
+      baseRotation = 0.6;
+      break;
+    case "up":
+      // Keep visible and place in hand; rotate upward a bit.
+      axe.x = 12;
+      axe.y = 10;
+      baseRotation = -2.2;
+      break;
+    case "down":
+      axe.x = 12;
+      axe.y = 10;
+      baseRotation = 0.2;
+      break;
+  }
+
+  player.axeBaseRotation = baseRotation;
+  if (!player.isAxeSwinging) {
+    axe.rotation = baseRotation;
+  }
 }
 
 export function createPlayer(): PlayerContainer {
@@ -69,15 +133,25 @@ export function createPlayer(): PlayerContainer {
   // Add body to container
   playerContainer.addChild(body);
 
+  // Add a simple axe sprite (will be positioned based on direction)
+  const axe = createAxe();
+  playerContainer.addChild(axe);
+
   // Position player at center initially (will be set by tile position)
   playerContainer.x = 0;
   playerContainer.y = 0;
 
-  return {
+  const player: PlayerContainer = {
     container: playerContainer,
     body,
+    axe,
+    axeBaseRotation: 0,
+    isAxeSwinging: false,
     direction: "down", // Default direction
   };
+
+  applyAxeRestPose(player);
+  return player;
 }
 
 export function setupPlayerMovement(
@@ -89,14 +163,16 @@ export function setupPlayerMovement(
   tiles: TileData[][],
   treesContainer: Container,
   woodContainer: Container,
+  initialTileX: number,
+  initialTileY: number,
   onMove?: (position: PlayerPosition) => void,
   onCooldownUpdate?: (progress: number) => void,
   onWoodCollected?: () => boolean,
   config?: PlayerConfig,
   getConfig?: () => PlayerConfig
 ): PlayerMovementResult {
-  let currentTileX = Math.floor(mapWidth / 2);
-  let currentTileY = Math.floor(mapHeight / 2);
+  let currentTileX = initialTileX;
+  let currentTileY = initialTileY;
   let isMoving = false;
   // Center player in tile
   let targetX = currentTileX * tileSize + tileSize / 2;
@@ -109,6 +185,11 @@ export function setupPlayerMovement(
 
   // Initialize player direction
   updatePlayerDirection(player);
+
+  // Axe swing animation state (super lightweight)
+  let axeSwingTime = 0;
+  const AXE_SWING_DURATION_SEC = 0.12;
+  const AXE_SWING_ANGLE = 1.2;
 
   const keys: { [key: string]: boolean } = {};
 
@@ -152,6 +233,11 @@ export function setupPlayerMovement(
         woodContainer,
         currentConfig
       );
+
+      // Trigger axe animation (even if no tree is hit)
+      axeSwingTime = 0;
+      player.isAxeSwinging = true;
+
       // Start cooldown
       hitCooldown = hitCooldownDuration;
       canHit = false;
@@ -174,6 +260,22 @@ export function setupPlayerMovement(
 
   // Update cooldown
   app.ticker.add(() => {
+    // Update axe swing animation
+    if (player.isAxeSwinging && player.axe.visible) {
+      axeSwingTime += app.ticker.deltaMS / 1000;
+      const t = Math.min(1, axeSwingTime / AXE_SWING_DURATION_SEC);
+      // Ease out (fast start, smooth end)
+      const eased = 1 - Math.pow(1 - t, 2);
+      const swing = Math.sin(eased * Math.PI); // 0 -> 1 -> 0
+      const directionSign = player.direction === "left" ? -1 : 1;
+      player.axe.rotation =
+        player.axeBaseRotation + directionSign * swing * AXE_SWING_ANGLE;
+      if (t >= 1) {
+        player.isAxeSwinging = false;
+        player.axe.rotation = player.axeBaseRotation;
+      }
+    }
+
     if (hitCooldown > 0) {
       hitCooldown -= app.ticker.deltaMS / 1000; // Convert to seconds
       if (hitCooldown <= 0) {
@@ -273,7 +375,6 @@ export function setupPlayerMovement(
         targetX = currentTileX * tileSize + tileSize / 2;
         targetY = currentTileY * tileSize + tileSize / 2;
         isMoving = true;
-
       }
     }
   });
@@ -298,7 +399,8 @@ function checkTreeHit(
   config?: PlayerConfig
 ): void {
   const areaChop = config?.areaChopEnabled || false;
-  const treeMaxHealth = config?.treeMaxHealth || 3;
+  const configuredTreeMaxHealth = config?.treeMaxHealth ?? 3;
+  const healthReduction = Math.max(0, 3 - configuredTreeMaxHealth);
 
   // Determine which tiles to hit
   const tilesToHit: Array<{ x: number; y: number }> = [];
@@ -350,8 +452,15 @@ function checkTreeHit(
     if (targetTile && targetTile.item === "tree" && targetTile.tree) {
       const tree = targetTile.tree;
 
-      // Get current health or use max health from config
-      const currentHealth = (tree as any).health ?? treeMaxHealth;
+      const baseMaxHealth =
+        (tree as any).baseMaxHealth ?? (tree as any).maxHealth ?? 3;
+      const effectiveMaxHealth = Math.max(1, baseMaxHealth - healthReduction);
+
+      // Ensure the tree's maxHealth reflects current config (for UI / future use)
+      (tree as any).maxHealth = effectiveMaxHealth;
+
+      // Get current health or use effective max health
+      const currentHealth = (tree as any).health ?? effectiveMaxHealth;
       const newHealth = currentHealth - 1;
 
       // Decrease tree health
@@ -370,21 +479,21 @@ function checkTreeHit(
         targetTile.tree = undefined;
         targetTile.woodPieces = [];
 
-        // Create 3 wood pieces on the tile
+        const woodDropCount = Math.max(1, (tree as any).woodDropCount ?? 3);
+        // Create wood pieces on the tile
         const tileCenterX = x * tileSize + tileSize / 2;
         const tileCenterY = y * tileSize + tileSize / 2;
 
-        // Position wood pieces in a small area around tile center
-        const offsets = [
-          { x: -8, y: -6 },
-          { x: 8, y: -6 },
-          { x: 0, y: 6 },
-        ];
-
-        for (let i = 0; i < 3; i++) {
+        // Position wood pieces around tile center (works for any count)
+        const radius = 10;
+        for (let i = 0; i < woodDropCount; i++) {
+          const angle =
+            woodDropCount === 1 ? 0 : (i / woodDropCount) * Math.PI * 2;
+          const offsetX = woodDropCount === 1 ? 0 : Math.cos(angle) * radius;
+          const offsetY = woodDropCount === 1 ? 0 : Math.sin(angle) * radius;
           const woodPiece = createWoodPiece();
-          woodPiece.x = tileCenterX + offsets[i].x;
-          woodPiece.y = tileCenterY + offsets[i].y;
+          woodPiece.x = tileCenterX + offsetX;
+          woodPiece.y = tileCenterY + offsetY;
           // Enable culling on wood pieces for better performance
           woodPiece.cullable = true;
           woodContainer.addChild(woodPiece);
@@ -550,4 +659,7 @@ function updatePlayerDirection(player: PlayerContainer): void {
       body.scale.y = 1;
       break;
   }
+
+  // Keep axe aligned with direction (rest pose)
+  applyAxeRestPose(player);
 }

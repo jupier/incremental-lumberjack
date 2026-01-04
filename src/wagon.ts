@@ -1,5 +1,6 @@
 import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import { TileData } from "./map";
+import { getCollectZoneCenter } from "./collect-zone";
 
 export interface Wagon {
   container: Container;
@@ -102,16 +103,6 @@ export function findClosestWood(
 /**
  * Get the collect zone center coordinates
  */
-export function getCollectZoneCenter(
-  mapWidth: number,
-  mapHeight: number
-): { tileX: number; tileY: number } {
-  return {
-    tileX: Math.floor(mapWidth / 2),
-    tileY: Math.floor(mapHeight / 2),
-  };
-}
-
 function getTileCenter(
   tileX: number,
   tileY: number,

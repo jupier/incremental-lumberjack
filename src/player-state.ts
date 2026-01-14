@@ -45,6 +45,11 @@ export class PlayerStateManager {
 
   constructor(initialConfig: PlayerConfig = DEFAULT_PLAYER_CONFIG) {
     this.config = { ...initialConfig };
+
+    // Root nodes are unlocked by default so both trees are visible and usable immediately.
+    // These are no-op improvements, but we record them as "purchased" for prerequisite checks.
+    this.purchaseImprovement("axe_root");
+    this.purchaseImprovement("wagon_root");
   }
 
   /**

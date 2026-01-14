@@ -9,6 +9,8 @@
 import { PlayerConfig } from "./player-state";
 import { Improvement } from "./improvements-menu";
 
+export type ImprovementCategory = "axe" | "wagon";
+
 /**
  * Improvement effect functions
  * Each function takes the current config and returns a modified config
@@ -17,13 +19,13 @@ export const IMPROVEMENT_EFFECTS: Record<
   string,
   (config: PlayerConfig) => PlayerConfig
 > = {
+  // Roots (unlocked by default)
+  axe_root: (config: PlayerConfig) => ({ ...config }),
+  wagon_root: (config: PlayerConfig) => ({ ...config }),
+
   improved_axe: (config: PlayerConfig) => ({
     ...config,
     axeCooldownDuration: config.axeCooldownDuration * 0.5,
-  }),
-  increased_wood_capacity: (config: PlayerConfig) => ({
-    ...config,
-    woodInventoryCapacity: config.woodInventoryCapacity + 1,
   }),
   sharpened_blade: (config: PlayerConfig) => ({
     ...config,
@@ -61,65 +63,112 @@ export const IMPROVEMENTS_DATA: Record<
     id: string;
     name: string;
     description: string;
-    cost: number;
+    baseCost: number;
+    costScaling?: number; // only for repeatable upgrades
     requires?: string; // ID of required improvement
     repeatable?: boolean;
+    category: ImprovementCategory;
+    tier: number; // for tree layout
   }
 > = {
+  axe_root: {
+    id: "axe_root",
+    name: "Axe",
+    description: "Unlock the axe improvement tree",
+    baseCost: 0,
+    category: "axe",
+    tier: 0,
+  },
   improved_axe: {
     id: "improved_axe",
     name: "Improved Axe",
     description: "Reduces axe cooldown by 50%",
-    cost: 10,
-  },
-  increased_wood_capacity: {
-    id: "increased_wood_capacity",
-    name: "Increased Wood Capacity",
-    description: "Increases wood inventory capacity by 1",
-    cost: 15,
+    baseCost: 2,
+    category: "axe",
+    tier: 1,
+    requires: "axe_root",
   },
   sharpened_blade: {
     id: "sharpened_blade",
     name: "Sharpened Blade",
     description: "Trees take 2 hits instead of 3",
-    cost: 20,
+    baseCost: 4,
+    requires: "improved_axe",
+    category: "axe",
+    tier: 2,
   },
   area_chop: {
     id: "area_chop",
     name: "Area Chop",
     description: "Hit all trees in a 3x3 area around you",
-    cost: 50,
+    baseCost: 10,
+    requires: "sharpened_blade",
+    category: "axe",
+    tier: 3,
   },
   backpack_upgrade: {
     id: "backpack_upgrade",
     name: "Backpack Upgrade",
     description: "Increases wood inventory capacity by 2",
-    cost: 20,
+    baseCost: 3,
+    requires: "improved_axe",
+    category: "axe",
+    tier: 2,
+  },
+  wagon_root: {
+    id: "wagon_root",
+    name: "Wagon",
+    description: "Unlock the wagon improvement tree",
+    baseCost: 0,
+    category: "wagon",
+    tier: 0,
   },
   automatic_wagon: {
     id: "automatic_wagon",
     name: "Automatic Wagon",
     description:
       "A slow wagon that automatically collects wood and brings it to the collect zone",
-    cost: 0,
+    baseCost: 6,
+    category: "wagon",
+    tier: 1,
+    requires: "wagon_root",
   },
   wagon_speed_1: {
     id: "wagon_speed_1",
     name: "Faster Wagon",
     description: "Increases wagon speed",
-    cost: 0,
+    baseCost: 2,
+    costScaling: 1.6,
     requires: "automatic_wagon",
     repeatable: true,
+    category: "wagon",
+    tier: 2,
   },
   wagon_capacity_1: {
     id: "wagon_capacity_1",
     name: "Bigger Wagon",
     description: "Increases wagon capacity by 1",
-    cost: 0,
+    baseCost: 3,
+    costScaling: 1.7,
     requires: "automatic_wagon",
     repeatable: true,
+    category: "wagon",
+    tier: 2,
   },
 };
+
+export function getImprovementNextCost(
+  improvementId: string,
+  currentLevel: number
+): number {
+  const data = IMPROVEMENTS_DATA[improvementId];
+  if (!data) return 999999;
+  if (!data.repeatable) return data.baseCost;
+
+  const scaling = data.costScaling ?? 1.6;
+  const cost = data.baseCost * Math.pow(scaling, currentLevel);
+  return Math.max(1, Math.round(cost));
+}
 
 /**
  * Get all improvements as Improvement array for the menu
@@ -129,11 +178,13 @@ export function getAllImprovements(): Improvement[] {
     id: data.id,
     name: data.name,
     description: data.description,
-    cost: data.cost,
+    cost: getImprovementNextCost(data.id, 0),
     purchased: false, // Will be updated by the menu system
     requires: data.requires,
     repeatable: data.repeatable,
     level: 0,
+    category: data.category,
+    tier: data.tier,
   }));
 }
 

@@ -14,7 +14,7 @@ import {
 import { createWoodCounter } from "./wood-counter";
 import { createImprovementsMenu, Improvement } from "./improvements-menu";
 import { PlayerStateManager, DEFAULT_PLAYER_CONFIG } from "./player-state";
-import { getAllImprovements } from "./improvements";
+import { getAllImprovements, getImprovementNextCost } from "./improvements";
 import { createWagon, setupWagon, Wagon } from "./wagon";
 import { getCollectZoneCenter, isInCollectZone } from "./collect-zone";
 
@@ -121,6 +121,22 @@ let wagon: Wagon | null = null;
 // Create improvements menu - get all improvements from centralized file
 const improvements: Improvement[] = getAllImprovements();
 
+function syncImprovementsFromState(): void {
+  for (const improvement of improvements) {
+    const level = playerStateManager.getImprovementLevel(improvement.id);
+    improvement.level = level;
+    improvement.cost = getImprovementNextCost(improvement.id, level);
+    if (improvement.repeatable) {
+      // Always show as upgradeable, the level indicates progress
+      improvement.purchased = false;
+    } else {
+      improvement.purchased = level > 0;
+    }
+  }
+}
+
+syncImprovementsFromState();
+
 const {
   container: improvementsMenu,
   show: showImprovementsMenu,
@@ -129,6 +145,7 @@ const {
 } = createImprovementsMenu(
   improvements,
   (improvementId: string) => {
+    syncImprovementsFromState();
     const improvement = improvements.find((imp) => imp.id === improvementId);
     if (
       improvement &&
@@ -139,12 +156,7 @@ const {
       const purchased = playerStateManager.purchaseImprovement(improvementId);
       if (purchased) {
         globalWoodCount -= improvement.cost;
-        if (improvement.repeatable) {
-          improvement.level =
-            playerStateManager.getImprovementLevel(improvementId);
-        } else {
-          improvement.purchased = true;
-        }
+        syncImprovementsFromState();
         updateWoodCount(globalWoodCount);
         updateImprovementsMenu(improvements);
 
@@ -164,10 +176,7 @@ const {
         }
 
         // Update wood slot capacity display if capacity was increased
-        if (
-          improvementId === "increased_wood_capacity" ||
-          improvementId === "backpack_upgrade"
-        ) {
+        if (improvementId === "backpack_upgrade") {
           const woodSlot = slots.find((slot) => slot.isWood);
           if (woodSlot) {
             woodSlot.capacity = config.woodInventoryCapacity;

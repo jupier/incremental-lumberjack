@@ -2,31 +2,23 @@ import { Application, Container, extensions, CullerPlugin } from "pixi.js";
 
 // Register CullerPlugin for performance optimization (only render visible objects)
 extensions.add(CullerPlugin);
-import { createPlayer, setupPlayerMovement, PlayerPosition } from "./player";
-import { createMap, getTileSize } from "./map";
-import { createMinimap, updateMinimapPlayer } from "./minimap";
-import {
-  createWeaponBar,
-  updateWeaponCooldown,
-  addWoodToBar,
-  removeAllWoodFromBar,
-} from "./weapon-bar";
+import { createMap } from "./map";
 import { createWoodCounter } from "./wood-counter";
 import { createImprovementsMenu, Improvement } from "./improvements-menu";
-import { PlayerStateManager, DEFAULT_PLAYER_CONFIG } from "./player-state";
+import { PlayerStateManager } from "./player-state";
 import { getAllImprovements, getImprovementNextCost } from "./improvements";
-import { createWagon, setupWagon, Wagon } from "./wagon";
-import { getCollectZoneCenter, isInCollectZone } from "./collect-zone";
+import { setupMouseTreeDestruction } from "./mouse-tree-destruction";
+import { animateWoodCollection } from "./wood-animation";
+import { setupAxeCursor } from "./axe-cursor";
 
 // Create and initialize PixiJS application with full screen
 const app = new Application();
 
-const BASE_WAGON_SPEED = 70; // pixels/sec (default wagon felt too slow)
 
 await app.init({
   width: window.innerWidth,
   height: window.innerHeight,
-  backgroundColor: 0x4a6741, // Darker, less shiny green background
+  //backgroundColor: 0x4a6741, // Darker, less shiny green background
   resizeTo: window, // Automatically resize to window
   antialias: true,
   // Performance optimizations for smoother gameplay
@@ -40,71 +32,52 @@ document.body.appendChild(app.canvas as HTMLCanvasElement);
 // Handle window resize
 window.addEventListener("resize", () => {
   app.renderer.resize(window.innerWidth, window.innerHeight);
-  // Update minimap position
-  minimap.x = window.innerWidth - 210; // MINIMAP_WIDTH + 10
-  minimap.y = 10;
-  // Update weapon bar position (centered, 400px wide)
-  weaponBar.x = (window.innerWidth - 400) / 2; // BAR_WIDTH
-  weaponBar.y = window.innerHeight - 80; // BAR_HEIGHT
 });
 
-// Create a world container that will move (camera system)
+// Create a world container
 const world = new Container();
+world.x = 0;
+world.y = 0;
 app.stage.addChild(world);
 
-// Create a larger map (bigger than screen)
-const tileSize = getTileSize();
-// Map size: Can be increased significantly
-// Practical limits:
-// - 100x100 = 10,000 tiles (good performance, ~4.8M pixels)
-// - 200x200 = 40,000 tiles (decent performance, ~19.2M pixels)
-// - 500x500 = 250,000 tiles (may be slow on older devices, ~120M pixels)
-// - 1000x1000 = 1,000,000 tiles (very large, may cause memory issues)
-// Current: 100x100 for better exploration while maintaining good performance
-const mapWidth = 100; // Large map width in tiles
-const mapHeight = 100; // Large map height in tiles
+// Map is fixed at 40x20 tiles (playable area)
+// Add 1 tile border on all sides, so total map is 42x22
+const playableWidth = 40;
+const playableHeight = 20;
+const borderSize = 1;
+const mapWidth = playableWidth + borderSize * 2; // 42
+const mapHeight = playableHeight + borderSize * 2; // 22
+
+// Calculate tile size to fill the entire screen without overflow
+// Use max to fill screen, but ensure we don't exceed screen bounds
+// Floor the result to avoid fractional pixels that could cause rendering issues
+const tileSize = Math.floor(Math.max(
+  window.innerWidth / mapWidth,
+  window.innerHeight / mapHeight
+));
 
 // Create the map with separate containers for grass and trees
-const { grassContainer, treesContainer, collectZoneContainer, tiles } =
-  createMap({
-    width: mapWidth,
-    height: mapHeight,
-  });
+const { grassContainer, treesContainer, tiles } = createMap({
+  width: mapWidth,
+  height: mapHeight,
+  tileSize: tileSize,
+});
 
 // Enable culling on containers for performance (only render visible tiles)
 grassContainer.cullable = true;
 grassContainer.cullableChildren = true;
 treesContainer.cullable = true;
 treesContainer.cullableChildren = true;
-collectZoneContainer.cullable = true;
 
 // Add grass tiles first (bottom layer)
 world.addChild(grassContainer);
 
-// Add collect zone (above grass, below other items)
-world.addChild(collectZoneContainer);
 
-// Create wood pieces container (above grass, below player)
-const woodContainer = new Container();
-woodContainer.cullable = true;
-woodContainer.cullableChildren = true;
-world.addChild(woodContainer);
-
-// Create and add the player (middle layer - behind trees, in front of grass and wood)
-const player = createPlayer();
-world.addChild(player.container);
-
-// Add trees last (top layer - in front of player)
+// Add trees last (top layer)
 world.addChild(treesContainer);
 
-// Create minimap
-const minimap = createMinimap(tiles, mapWidth, mapHeight);
-app.stage.addChild(minimap);
-
-// Create weapon bar
-const { container: weaponBar, slots } = createWeaponBar();
-app.stage.addChild(weaponBar);
-const axeSlot = slots[0]; // First slot is the axe
+// Setup custom axe cursor with cooldown display
+const { triggerSwing, updateCooldown: updateAxeCooldown } = setupAxeCursor(app);
 
 // Create wood counter
 const { container: woodCounter, updateCount: updateWoodCount } =
@@ -114,9 +87,6 @@ let globalWoodCount = 0;
 
 // Initialize player state manager
 const playerStateManager = new PlayerStateManager();
-
-// Store wagon reference (will be created when improvement is purchased)
-let wagon: Wagon | null = null;
 
 // Create improvements menu - get all improvements from centralized file
 const improvements: Improvement[] = getAllImprovements();
@@ -163,29 +133,6 @@ const {
         // Get updated config
         const config = playerStateManager.getConfig();
 
-        // Update player cooldown if axe was improved
-        if (
-          improvementId === "improved_axe" &&
-          playerMovement.updateCooldownDuration
-        ) {
-          // Use the actual cooldown from config (supports future multi-level improvements)
-          const isImproved =
-            config.axeCooldownDuration <
-            DEFAULT_PLAYER_CONFIG.axeCooldownDuration;
-          playerMovement.updateCooldownDuration(isImproved);
-        }
-
-        // Update wood slot capacity display if capacity was increased
-        if (improvementId === "backpack_upgrade") {
-          const woodSlot = slots.find((slot) => slot.isWood);
-          if (woodSlot) {
-            woodSlot.capacity = config.woodInventoryCapacity;
-            if (woodSlot.countText) {
-              const count = woodSlot.count || 0;
-              woodSlot.countText.text = `${count}/${config.woodInventoryCapacity}`;
-            }
-          }
-        }
 
         // Update existing trees' health if Sharpened Blade was purchased
         if (improvementId === "sharpened_blade") {
@@ -201,53 +148,6 @@ const {
           });
         }
 
-        // Create wagon if Automatic Wagon was purchased
-        if (improvementId === "automatic_wagon" && !wagon) {
-          const collectZoneCenter = getCollectZoneCenter(mapWidth, mapHeight);
-
-          const wagonContainer = createWagon();
-          wagon = {
-            container: wagonContainer,
-            tileX: collectZoneCenter.tileX,
-            tileY: collectZoneCenter.tileY,
-            targetTileX: null,
-            targetTileY: null,
-            carriedWoodCount: 0,
-            capacity: config.wagonCapacity,
-            speed: BASE_WAGON_SPEED * config.wagonSpeedMultiplier,
-          };
-
-          // Position wagon at collect zone center
-          wagonContainer.x = collectZoneCenter.tileX * tileSize + tileSize / 2;
-          wagonContainer.y = collectZoneCenter.tileY * tileSize + tileSize / 2;
-
-          // Add wagon to world at the right layer (above grass/wood, below player)
-          // Insert before player container to ensure it's below player
-          const playerIndex = world.getChildIndex(player.container);
-          world.addChildAt(wagonContainer, playerIndex);
-
-          // Setup wagon movement and collection
-          setupWagon(
-            wagon,
-            app,
-            tileSize,
-            mapWidth,
-            mapHeight,
-            tiles,
-            woodContainer,
-            (count: number) => {
-              globalWoodCount += count;
-              updateWoodCount(globalWoodCount);
-            },
-            isInCollectZone
-          );
-        }
-
-        // Apply wagon upgrades to existing wagon immediately
-        if (wagon) {
-          wagon.capacity = config.wagonCapacity;
-          wagon.speed = BASE_WAGON_SPEED * config.wagonSpeedMultiplier;
-        }
       }
     }
   },
@@ -255,93 +155,55 @@ const {
 );
 app.stage.addChild(improvementsMenu);
 
-// Track player position for minimap (will be updated by setupPlayerMovement)
-let currentPlayerPosition: PlayerPosition = {
-  tileX: getCollectZoneCenter(mapWidth, mapHeight).tileX,
-  tileY: getCollectZoneCenter(mapWidth, mapHeight).tileY,
-};
-
-// Setup player movement with z/q/s/d keys (tile-based)
-const initialConfig = playerStateManager.getConfig();
-const playerSpawn = getCollectZoneCenter(mapWidth, mapHeight);
-const playerMovement = setupPlayerMovement(
-  player,
+// Setup mouse-based tree destruction
+setupMouseTreeDestruction(
   app,
+  world,
   tileSize,
   mapWidth,
   mapHeight,
   tiles,
   treesContainer,
-  woodContainer,
-  playerSpawn.tileX,
-  playerSpawn.tileY,
-  (position) => {
-    currentPlayerPosition = position;
-    updateMinimapPlayer(
-      minimap,
-      position.tileX,
-      position.tileY,
-      mapWidth,
-      mapHeight
-    );
-
-    // Check if player is in collect zone and deposit all wood
-    if (isInCollectZone(position.tileX, position.tileY, mapWidth, mapHeight)) {
-      const woodDeposited = removeAllWoodFromBar(weaponBar, slots);
-      if (woodDeposited > 0) {
-        globalWoodCount += woodDeposited;
+  () => playerStateManager.getConfig(),
+  (progress: number) => {
+    // Update cooldown bar on axe cursor
+    updateAxeCooldown(progress);
+  },
+  (count: number, worldX: number, worldY: number) => {
+    // Animate wood collection from tree to counter
+    // Wood counter is at screen position (10, 10) + center of counter (75, 25) = (85, 35)
+    const targetScreenX = 85; // 10 + 75 (half of 150 width)
+    const targetScreenY = 35; // 10 + 25 (half of 50 height)
+    
+    animateWoodCollection(
+      app,
+      world,
+      worldX,
+      worldY,
+      targetScreenX,
+      targetScreenY,
+      count,
+      (collectedCount: number) => {
+        // Update wood count when animation completes
+        globalWoodCount += collectedCount;
         updateWoodCount(globalWoodCount);
       }
-    }
+    );
   },
-  (progress) => {
-    // Update weapon bar cooldown
-    updateWeaponCooldown(axeSlot, progress);
-  },
-  () => {
-    // Wood collected callback - try to add wood (respects capacity)
-    // Returns true if wood was added, false if inventory is full
-    const config = playerStateManager.getConfig();
-    return addWoodToBar(weaponBar, slots, config.woodInventoryCapacity);
-  },
-  initialConfig, // Pass initial config
-  () => playerStateManager.getConfig() // Pass getter function for dynamic config updates
+  triggerSwing // Pass swing trigger to mouse tree destruction
 );
 
-// Initialize minimap with player position
-currentPlayerPosition = {
-  tileX: playerMovement.tileX,
-  tileY: playerMovement.tileY,
-};
-updateMinimapPlayer(
-  minimap,
-  currentPlayerPosition.tileX,
-  currentPlayerPosition.tileY,
-  mapWidth,
-  mapHeight
-);
-
-// Handle Tab key to show/hide improvements menu
+// Handle Tab key to show/hide improvements menu (works anywhere)
 let improvementsMenuVisible = false;
 window.addEventListener("keydown", (e) => {
   if (e.key === "Tab") {
     e.preventDefault();
-    if (
-      currentPlayerPosition &&
-      isInCollectZone(
-        currentPlayerPosition.tileX,
-        currentPlayerPosition.tileY,
-        mapWidth,
-        mapHeight
-      )
-    ) {
-      if (improvementsMenuVisible) {
-        hideImprovementsMenu();
-        improvementsMenuVisible = false;
-      } else {
-        showImprovementsMenu();
-        improvementsMenuVisible = true;
-      }
+    if (improvementsMenuVisible) {
+      hideImprovementsMenu();
+      improvementsMenuVisible = false;
+    } else {
+      showImprovementsMenu();
+      improvementsMenuVisible = true;
     }
   } else if (e.key === "Escape" && improvementsMenuVisible) {
     hideImprovementsMenu();
@@ -349,39 +211,9 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-// Camera system: keep player centered, move the world
-function updateCamera() {
-  // Use player's actual position (smooth movement)
-  const playerWorldX = player.container.x;
-  const playerWorldY = player.container.y;
-
-  // Move world so player is centered on screen
-  world.x = window.innerWidth / 2 - playerWorldX;
-  world.y = window.innerHeight / 2 - playerWorldY;
-
-  // Account for tree overflow (trees extend 40px radius beyond their center)
-  const treeOverflow = 40;
-  const mapPixelWidth = mapWidth * tileSize;
-  const mapPixelHeight = mapHeight * tileSize;
-
-  // Clamp camera to allow showing tree overflow
-  // Trees extend 40px beyond their center, so we need to allow showing that overflow
-  // The effective map bounds are: -treeOverflow to mapPixelWidth + treeOverflow
-  const minX = window.innerWidth - mapPixelWidth - treeOverflow;
-  const minY = window.innerHeight - mapPixelHeight - treeOverflow;
-  const maxX = treeOverflow;
-  const maxY = treeOverflow;
-
-  world.x = Math.max(minX, Math.min(maxX, world.x));
-  world.y = Math.max(minY, Math.min(maxY, world.y));
-}
-
-// Update camera every frame to follow player smoothly
+// Update tree shake animations
 app.ticker.add(() => {
-  updateCamera();
-
-  // Update tree shake animations
-  const shakeIntensity = 3;
+  const shakeIntensity = 8; // Increased from 3 for more noticeable shake
   const shakeDuration = 0.2; // seconds
   const shakeCount = 5;
   const deltaTime = app.ticker.deltaMS / 1000; // Convert to seconds

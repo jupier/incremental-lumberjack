@@ -9,7 +9,7 @@
 import { PlayerConfig } from "./player-state";
 import { Improvement } from "./improvements-menu";
 
-export type ImprovementCategory = "axe" | "wagon";
+export type ImprovementCategory = "axe";
 
 /**
  * Improvement effect functions
@@ -19,9 +19,8 @@ export const IMPROVEMENT_EFFECTS: Record<
   string,
   (config: PlayerConfig) => PlayerConfig
 > = {
-  // Roots (unlocked by default)
+  // Root (unlocked by default)
   axe_root: (config: PlayerConfig) => ({ ...config }),
-  wagon_root: (config: PlayerConfig) => ({ ...config }),
 
   improved_axe: (config: PlayerConfig) => ({
     ...config,
@@ -34,23 +33,6 @@ export const IMPROVEMENT_EFFECTS: Record<
   area_chop: (config: PlayerConfig) => ({
     ...config,
     areaChopEnabled: true,
-  }),
-  backpack_upgrade: (config: PlayerConfig) => ({
-    ...config,
-    woodInventoryCapacity: config.woodInventoryCapacity + 2,
-  }),
-  // Wagons
-  automatic_wagon: (config: PlayerConfig) => ({
-    ...config,
-    wagonCount: Math.max(1, config.wagonCount),
-  }),
-  wagon_speed_1: (config: PlayerConfig) => ({
-    ...config,
-    wagonSpeedMultiplier: config.wagonSpeedMultiplier + 0.25,
-  }),
-  wagon_capacity_1: (config: PlayerConfig) => ({
-    ...config,
-    wagonCapacity: config.wagonCapacity + 1,
   }),
 };
 
@@ -105,55 +87,6 @@ export const IMPROVEMENTS_DATA: Record<
     requires: "sharpened_blade",
     category: "axe",
     tier: 3,
-  },
-  backpack_upgrade: {
-    id: "backpack_upgrade",
-    name: "Backpack Upgrade",
-    description: "Increases wood inventory capacity by 2",
-    baseCost: 3,
-    requires: "improved_axe",
-    category: "axe",
-    tier: 2,
-  },
-  wagon_root: {
-    id: "wagon_root",
-    name: "Wagon",
-    description: "Unlock the wagon improvement tree",
-    baseCost: 0,
-    category: "wagon",
-    tier: 0,
-  },
-  automatic_wagon: {
-    id: "automatic_wagon",
-    name: "Automatic Wagon",
-    description:
-      "A slow wagon that automatically collects wood and brings it to the collect zone",
-    baseCost: 6,
-    category: "wagon",
-    tier: 1,
-    requires: "wagon_root",
-  },
-  wagon_speed_1: {
-    id: "wagon_speed_1",
-    name: "Faster Wagon",
-    description: "Increases wagon speed",
-    baseCost: 2,
-    costScaling: 1.6,
-    requires: "automatic_wagon",
-    repeatable: true,
-    category: "wagon",
-    tier: 2,
-  },
-  wagon_capacity_1: {
-    id: "wagon_capacity_1",
-    name: "Bigger Wagon",
-    description: "Increases wagon capacity by 1",
-    baseCost: 3,
-    costScaling: 1.7,
-    requires: "automatic_wagon",
-    repeatable: true,
-    category: "wagon",
-    tier: 2,
   },
 };
 

@@ -1,38 +1,26 @@
 /**
  * Player State Management System
  *
- * This module manages the player's configuration.
+ * This module manages the game configuration (axe cooldown, tree health, etc.).
  * Improvements are defined in improvements.ts
  */
 
 import { getImprovementData, getImprovementEffect } from "./improvements";
 
 export interface PlayerConfig {
-  // Inventory
-  woodInventoryCapacity: number;
-
   // Combat
   axeCooldownDuration: number; // in seconds
   treeMaxHealth: number; // Maximum health of trees (default 3, reduced to 2 with Sharpened Blade)
   areaChopEnabled: boolean; // Hit all trees in 3x3 area
-
-  // Wagons
-  wagonCount: number; // Number of active wagons
-  wagonCapacity: number; // How many wood pieces a wagon can carry before depositing
-  wagonSpeedMultiplier: number; // Multiplier applied to the wagon base speed
 }
 
 /**
  * Default player configuration
  */
 export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
-  woodInventoryCapacity: 1,
   axeCooldownDuration: 1.0, // 1 second
   treeMaxHealth: 3, // Trees have 3 health by default
   areaChopEnabled: false,
-  wagonCount: 0,
-  wagonCapacity: 1,
-  wagonSpeedMultiplier: 1,
 };
 
 /**
@@ -46,10 +34,9 @@ export class PlayerStateManager {
   constructor(initialConfig: PlayerConfig = DEFAULT_PLAYER_CONFIG) {
     this.config = { ...initialConfig };
 
-    // Root nodes are unlocked by default so both trees are visible and usable immediately.
-    // These are no-op improvements, but we record them as "purchased" for prerequisite checks.
+    // Root node is unlocked by default so the tree is visible and usable immediately.
+    // This is a no-op improvement, but we record it as "purchased" for prerequisite checks.
     this.purchaseImprovement("axe_root");
-    this.purchaseImprovement("wagon_root");
   }
 
   /**

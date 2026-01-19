@@ -1,18 +1,12 @@
 import { Graphics, Container } from "pixi.js";
 import { createTree, TreeType } from "./tree";
-import {
-  COLLECT_ZONE_SIZE_TILES,
-  getCollectZoneBounds,
-  isInCollectZoneClearArea,
-} from "./collect-zone";
-
-const TILE_SIZE = 48; // Size of each tile in pixels
 
 export type TileItem = "tree" | "wood" | null;
 
 export interface MapConfig {
   width: number; // Number of tiles wide
   height: number; // Number of tiles tall
+  tileSize: number; // Size of each tile in pixels
 }
 
 export interface TileData {
@@ -27,46 +21,27 @@ export interface TileData {
 export function createMap(config: MapConfig): {
   grassContainer: Container;
   treesContainer: Container;
-  collectZoneContainer: Container;
   tiles: TileData[][];
 } {
   const grassContainer = new Container();
   const treesContainer = new Container();
-  const collectZoneContainer = new Container();
   const tiles: TileData[][] = [];
-  const TREE_DENSITY = 0.75; // 75% of tiles get trees outside the clear area
-
-  const collectZoneBounds = getCollectZoneBounds(config.width, config.height);
-
-  const collectZone = new Graphics();
-  // Draw a semi-transparent overlay for the collect zone
-  collectZone.rect(
-    collectZoneBounds.startTileX * TILE_SIZE,
-    collectZoneBounds.startTileY * TILE_SIZE,
-    COLLECT_ZONE_SIZE_TILES * TILE_SIZE,
-    COLLECT_ZONE_SIZE_TILES * TILE_SIZE
-  );
-  collectZone.fill({ color: 0x4169e1, alpha: 0.3 }); // Blue tint with transparency
-
-  // Draw border around the collect zone
-  collectZone.rect(
-    collectZoneBounds.startTileX * TILE_SIZE,
-    collectZoneBounds.startTileY * TILE_SIZE,
-    COLLECT_ZONE_SIZE_TILES * TILE_SIZE,
-    COLLECT_ZONE_SIZE_TILES * TILE_SIZE
-  );
-  collectZone.stroke({ width: 3, color: 0x4169e1 }); // Blue border
-
-  collectZoneContainer.addChild(collectZone);
+  const TREE_DENSITY = 0.75; // 75% of tiles get trees
+  const tileSize = config.tileSize;
 
   // Phase 1: Create all grass tiles first
   for (let y = 0; y < config.height; y++) {
     tiles[y] = [];
     for (let x = 0; x < config.width; x++) {
-      // Create grass tile
-      const tile = createGrassTile();
-      tile.x = x * TILE_SIZE;
-      tile.y = y * TILE_SIZE;
+      // Check if this is a border tile
+      const isBorder = x === 0 || x === config.width - 1 || y === 0 || y === config.height - 1;
+      
+      // Create grass tile (only draw borders on right and bottom to avoid outer border)
+      const isRightEdge = x === config.width - 1;
+      const isBottomEdge = y === config.height - 1;
+      const tile = createGrassTile(tileSize, isRightEdge, isBottomEdge, isBorder);
+      tile.x = x * tileSize;
+      tile.y = y * tileSize;
       // Enable culling on individual tiles for better performance
       tile.cullable = true;
       grassContainer.addChild(tile);
@@ -76,20 +51,23 @@ export function createMap(config: MapConfig): {
     }
   }
 
-  // Phase 2: Add trees in separate container
+  // Phase 2: Add trees in separate container (skip border tiles)
   for (let y = 0; y < config.height; y++) {
     for (let x = 0; x < config.width; x++) {
-      // Place trees on every tile except the 5x5 clear area around the collect zone
-      if (
-        !isInCollectZoneClearArea(x, y, config.width, config.height) &&
-        Math.random() < TREE_DENSITY
-      ) {
+      // Skip border tiles (first and last row/column)
+      const isBorder = x === 0 || x === config.width - 1 || y === 0 || y === config.height - 1;
+      if (isBorder) {
+        continue; // Leave border tiles empty
+      }
+      
+      // Place trees randomly across the map
+      if (Math.random() < TREE_DENSITY) {
         const roll = Math.random();
         const treeType: TreeType =
           roll < 0.08 ? "ancient" : roll < 0.25 ? "strong" : "normal";
         const tree = createTree(treeType);
-        const treeX = x * TILE_SIZE + TILE_SIZE / 2;
-        const treeY = y * TILE_SIZE + TILE_SIZE / 2;
+        const treeX = x * tileSize + tileSize / 2;
+        const treeY = y * tileSize + tileSize / 2;
 
         tree.x = treeX;
         tree.y = treeY;
@@ -105,23 +83,35 @@ export function createMap(config: MapConfig): {
     }
   }
 
-  return { grassContainer, treesContainer, collectZoneContainer, tiles };
+  return { grassContainer, treesContainer, tiles };
 }
 
-function createGrassTile(): Graphics {
+function createGrassTile(tileSize: number, isRightEdge: boolean, isBottomEdge: boolean, isBorder: boolean = false): Graphics {
   const tile = new Graphics();
 
-  // Draw grass tile (darker, less shiny green)
-  tile.rect(0, 0, TILE_SIZE, TILE_SIZE);
-  tile.fill(0x6b8e23); // Darker olive green base
+  // Draw grass tile with special color for border tiles
+  // Use Math.ceil to ensure tiles don't get cut off
+  const tileWidth = Math.ceil(tileSize);
+  const tileHeight = Math.ceil(tileSize);
+  tile.rect(0, 0, tileWidth, tileHeight);
+  if (isBorder) {
+    tile.fill(0x3d5a3d); // Darker gray-green for border tiles
+  } else {
+    tile.fill(0x6b8e23); // Darker olive green base
+  }
 
-  // Add border for tile separation
-  tile.rect(0, 0, TILE_SIZE, TILE_SIZE);
-  tile.stroke({ width: 1, color: 0x556b2f }); // Even darker green border
+  // Add borders only on right and bottom edges (to avoid outer border)
+  // Right edge border - draw at the edge, not 1px inside
+  if (!isRightEdge) {
+    tile.rect(tileWidth - 1, 0, 1, tileHeight);
+    tile.fill(0x556b2f); // Even darker green border
+  }
+  
+  // Bottom edge border - draw at the edge, not 1px inside
+  if (!isBottomEdge) {
+    tile.rect(0, tileHeight - 1, tileWidth, 1);
+    tile.fill(0x556b2f); // Even darker green border
+  }
 
   return tile;
-}
-
-export function getTileSize(): number {
-  return TILE_SIZE;
 }

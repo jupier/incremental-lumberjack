@@ -1,4 +1,5 @@
-import { Container, Graphics, Text, TextStyle } from "pixi.js";
+import * as d3 from "d3";
+import { ImprovementCategory } from "./improvements";
 
 export interface Improvement {
   id: string;
@@ -9,520 +10,430 @@ export interface Improvement {
   requires?: string; // ID of required improvement
   repeatable?: boolean;
   level?: number; // only meaningful when repeatable === true
-  category: "axe" | "wagon";
+  category: ImprovementCategory;
   tier: number;
+}
+
+// Category configuration: colors and display names
+const CATEGORY_CONFIG: Partial<Record<
+  ImprovementCategory,
+  { color: string; name: string }
+>> = {
+  axe: { color: "#e74c3c", name: "Axe" },
+  cursor: { color: "#f1c40f", name: "Cursor" },
+  map: { color: "#2ecc71", name: "Map" },
+};
+
+// Helper function to get category config with defaults
+function getCategoryConfig(category: ImprovementCategory): { color: string; name: string } {
+  return CATEGORY_CONFIG[category] ?? {
+    color: "#ffffff", // Default white
+    name: category.charAt(0).toUpperCase() + category.slice(1), // Capitalize category name
+  };
+}
+
+interface TreeNodeData {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  purchased: boolean;
+  repeatable?: boolean;
+  level?: number;
+  tier: number;
+  locked: boolean;
+  category?: ImprovementCategory;
+  children?: TreeNodeData[];
 }
 
 export function createImprovementsMenu(
   improvements: Improvement[],
   onPurchase: (improvementId: string) => void,
-  hasImprovement?: (improvementId: string) => boolean
+  hasImprovement?: (improvementId: string) => boolean,
+  cursorContainer?: { container: any; hide?: () => void; show?: () => void }
 ): {
-  container: Container;
   show: () => void;
   hide: () => void;
   update: (improvements: Improvement[]) => void;
   destroy: () => void;
 } {
-  const container = new Container();
-  container.visible = false;
+  // Create modal container
+  const modal = document.createElement("div");
+  modal.id = "improvements-modal";
+  modal.style.cssText = `
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 10000;
+    overflow: auto;
+    cursor: default !important;
+  `;
 
-  const MENU_WIDTH = Math.min(980, window.innerWidth - 40);
-  const MENU_HEIGHT = Math.min(540, window.innerHeight - 40);
-  const MENU_PADDING = 20;
-  const TITLE_HEIGHT = 60;
-
-  const CONTENT_HEIGHT = MENU_HEIGHT - TITLE_HEIGHT - MENU_PADDING;
-
-  // Create background
-  const background = new Graphics();
-  background.rect(0, 0, MENU_WIDTH, MENU_HEIGHT);
-  background.fill(0x1a1a1a);
-  background.alpha = 0.95;
-  background.stroke({ width: 3, color: 0x4169e1 });
-  container.addChild(background);
+  // Create modal content
+  const modalContent = document.createElement("div");
+  modalContent.style.cssText = `
+    position: relative;
+    background-color: #1a1a1a;
+    margin: 20px auto;
+    padding: 20px;
+    border: 3px solid #4169e1;
+    border-radius: 8px;
+    max-width: 95%;
+    max-height: 90vh;
+    overflow: auto;
+    color: white;
+    font-family: Arial, sans-serif;
+    cursor: default !important;
+  `;
 
   // Create title
-  const titleStyle = new TextStyle({
-    fontFamily: "Arial",
-    fontSize: 24,
-    fill: 0xffffff,
-    fontWeight: "bold",
-    align: "center",
-  });
-  const title = new Text({ text: "Improvements", style: titleStyle });
-  title.anchor.set(0.5);
-  title.x = MENU_WIDTH / 2;
-  title.y = 30;
-  container.addChild(title);
+  const title = document.createElement("h2");
+  title.textContent = "Improvements";
+  title.style.cssText = `
+    text-align: center;
+    margin: 0 0 20px 0;
+    color: white;
+    font-size: 24px;
+    font-weight: bold;
+  `;
+  modalContent.appendChild(title);
 
-  // Center menu on screen
-  container.x = (window.innerWidth - MENU_WIDTH) / 2;
-  container.y = (window.innerHeight - MENU_HEIGHT) / 2;
+  // Create close button
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "×";
+  closeBtn.style.cssText = `
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 32px;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    line-height: 40px;
+    padding: 0;
+  `;
+  closeBtn.onclick = () => hide();
+  modalContent.appendChild(closeBtn);
 
-  // Masked content area (prevents overflow)
-  const mask = new Graphics();
-  mask.rect(MENU_PADDING, TITLE_HEIGHT, MENU_WIDTH - MENU_PADDING * 2, CONTENT_HEIGHT);
-  mask.fill(0x000000);
-  container.addChild(mask);
+  // Create tree container
+  const treeContainer = document.createElement("div");
+  treeContainer.id = "improvements-tree";
+  treeContainer.style.cssText = `
+    min-height: 400px;
+    position: relative;
+  `;
+  modalContent.appendChild(treeContainer);
 
-  const treeViewport = new Container();
-  treeViewport.x = MENU_PADDING;
-  treeViewport.y = TITLE_HEIGHT;
-  treeViewport.mask = mask;
-  container.addChild(treeViewport);
+  modal.appendChild(modalContent);
+  document.body.appendChild(modal);
 
-  const treeRoot = new Container();
-  treeViewport.addChild(treeRoot);
+  // Close on background click
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      hide();
+    }
+  };
 
-  // PoE-like tree feel: pan + zoom
-  let treeScale = 1;
-  let isDragging = false;
-  let dragStartX = 0;
-  let dragStartY = 0;
-  let treeStartX = 0;
-  let treeStartY = 0;
+  // Close on Escape key
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && modal.style.display !== "none") {
+      hide();
+    }
+  };
+  window.addEventListener("keydown", handleEscape);
 
-  // Layout constants (radial)
-  const NODE_R = 20;
-  const RING_GAP = 74;
-  const SECTION_GAP = 30;
+  // Build tree data structure from all improvements with a common root
+  function buildTreeData(
+    allImprovements: Improvement[],
+    hasImprovement?: (id: string) => boolean
+  ): TreeNodeData | null {
+    if (allImprovements.length === 0) return null;
 
-  // Hover tooltip (details)
-  const tooltip = new Container();
-  tooltip.visible = false;
-  container.addChild(tooltip);
+    const allNodes = new Map<string, TreeNodeData>();
 
-  const tooltipBg = new Graphics();
-  tooltip.addChild(tooltipBg);
-
-  const tooltipTitle = new Text({
-    text: "",
-    style: new TextStyle({
-      fontFamily: "Arial",
-      fontSize: 14,
-      fill: 0xffffff,
-      fontWeight: "bold",
-    }),
-  });
-  tooltip.addChild(tooltipTitle);
-
-  const tooltipBody = new Text({
-    text: "",
-    style: new TextStyle({
-      fontFamily: "Arial",
-      fontSize: 12,
-      fill: 0xdddddd,
-      wordWrap: true,
-      wordWrapWidth: 280,
-    }),
-  });
-  tooltip.addChild(tooltipBody);
-
-  function showTooltip(
-    improvement: Improvement,
-    isLocked: boolean,
-    anchorX: number,
-    anchorY: number
-  ) {
-    const level = improvement.level ?? 0;
-    const levelLine = improvement.repeatable ? `Level: ${level}\n` : "";
-    const requiresLine = improvement.requires
-      ? `Requires: ${improvement.requires}\n`
-      : "";
-    const lockedLine = isLocked ? `Locked\n` : "";
-    const purchasedLine =
-      improvement.purchased && !improvement.repeatable ? `Purchased\n` : "";
-    const costLine = improvement.purchased && !improvement.repeatable
-      ? ""
-      : `Cost: ${improvement.cost}\n`;
-
-    tooltipTitle.text = improvement.name;
-    tooltipBody.text =
-      `${lockedLine}${purchasedLine}${costLine}${levelLine}${requiresLine}\n` +
-      improvement.description;
-
-    const padding = 10;
-    const w = 300;
-    tooltipBody.style.wordWrapWidth = w - padding * 2;
-    tooltipBody.x = padding;
-    tooltipBody.y = 34;
-    tooltipTitle.x = padding;
-    tooltipTitle.y = padding;
-
-    const h = Math.max(90, tooltipBody.height + 44);
-    tooltipBg.clear();
-    tooltipBg.roundRect(0, 0, w, h, 10);
-    tooltipBg.fill({ color: 0x101010, alpha: 0.95 });
-    tooltipBg.stroke({ width: 2, color: 0x4169e1, alpha: 0.9 });
-
-    // Position near the hovered node, but keep within menu bounds.
-    const margin = 8;
-    let x = container.toLocal({ x: anchorX, y: anchorY }).x + 18;
-    let y = container.toLocal({ x: anchorX, y: anchorY }).y + 18;
-
-    const maxX = MENU_WIDTH - w - margin;
-    const maxY = MENU_HEIGHT - h - margin;
-    x = Math.max(margin, Math.min(maxX, x));
-    y = Math.max(margin, Math.min(maxY, y));
-
-    tooltip.x = x;
-    tooltip.y = y;
-    tooltip.visible = true;
-  }
-
-  function hideTooltip() {
-    tooltip.visible = false;
-  }
-
-  function createSectionTitle(text: string, x: number, y: number): Text {
-    const t = new Text({
-      text,
-      style: new TextStyle({
-        fontFamily: "Arial",
-        fontSize: 18,
-        fill: 0xffffff,
-        fontWeight: "bold",
-      }),
+    // Create all nodes
+    allImprovements.forEach(imp => {
+      allNodes.set(imp.id, {
+        id: imp.id,
+        name: imp.name,
+        description: imp.description,
+        cost: imp.cost,
+        purchased: imp.purchased,
+        repeatable: imp.repeatable,
+        level: imp.level ?? 0,
+        tier: imp.tier,
+        locked: imp.requires ? !(hasImprovement && hasImprovement(imp.requires)) : false,
+        category: imp.category,
+        children: [],
+      });
     });
-    t.x = x;
-    t.y = y;
-    return t;
-  }
 
-  function createNode(improvement: Improvement, isLocked: boolean): Container {
-    const node = new Container();
-    node.eventMode = "static";
-    node.cursor = isLocked ? "not-allowed" : "pointer";
-
-    const ring = new Graphics();
-    const baseFill = improvement.purchased ? 0x2a4a2a : 0x1f1f1f;
-    const strokeColor = isLocked
-      ? 0x666666
-      : improvement.purchased
-        ? 0x4a8a4a
-        : 0x4169e1;
-    const glowColor = improvement.purchased ? 0x4a8a4a : 0x4169e1;
-    const isRoot = improvement.tier === 0;
-
-    // Soft glow (PoE-ish)
-    ring.circle(0, 0, NODE_R + 7);
-    ring.fill({ color: glowColor, alpha: isLocked ? 0.05 : 0.12 });
-
-    // Main node
-    ring.circle(0, 0, NODE_R);
-    ring.fill({ color: baseFill, alpha: isLocked ? 0.55 : 0.95 });
-    ring.circle(0, 0, NODE_R);
-    ring.stroke({ width: isRoot ? 4 : 3, color: strokeColor, alpha: 0.95 });
-
-    // Inner icon-ish dot (just to differentiate roots)
-    if (isRoot) {
-      ring.circle(0, 0, 7);
-      ring.fill({ color: improvement.category === "axe" ? 0xe74c3c : 0xf1c40f, alpha: 0.9 });
-    } else {
-      ring.circle(0, 0, 5);
-      ring.fill({ color: 0xffffff, alpha: 0.12 });
-    }
-
-    node.addChild(ring);
-
-    if (!isLocked) {
-      node.on("pointerdown", () => onPurchase(improvement.id));
-    }
-
-    node.on("pointerover", () => {
-      const gp = node.getGlobalPosition();
-      showTooltip(improvement, isLocked, gp.x, gp.y);
+    // Build parent-child relationships
+    allImprovements.forEach(imp => {
+      if (imp.requires) {
+        const parent = allNodes.get(imp.requires);
+        const child = allNodes.get(imp.id);
+        if (parent && child) {
+          if (!parent.children) parent.children = [];
+          parent.children.push(child);
+        }
+      }
     });
-    node.on("pointerout", () => hideTooltip());
 
-    if (isLocked) {
-      const lockOverlay = new Graphics();
-      lockOverlay.circle(0, 0, NODE_R + 8);
-      lockOverlay.fill({ color: 0x000000, alpha: 0.25 });
-      node.addChild(lockOverlay);
-    }
+    // Find root nodes (improvements with no requirements)
+    const roots = allImprovements.filter(imp => !imp.requires);
 
-    return node;
-  }
-
-  function createHubNode(x: number, y: number): Container {
-    const hub = new Container();
-    hub.x = x;
-    hub.y = y;
-    hub.eventMode = "static";
-    hub.cursor = "pointer";
-
-    const g = new Graphics();
-    // Outer glow
-    g.circle(0, 0, NODE_R + 12);
-    g.fill({ color: 0x4169e1, alpha: 0.12 });
-    // Main ring
-    g.circle(0, 0, NODE_R + 4);
-    g.fill({ color: 0x1f1f1f, alpha: 0.95 });
-    g.circle(0, 0, NODE_R + 4);
-    g.stroke({ width: 4, color: 0x4169e1, alpha: 0.95 });
-    // Center dot
-    g.circle(0, 0, 6);
-    g.fill({ color: 0xffffff, alpha: 0.18 });
-    hub.addChild(g);
-
-    const hubInfo: Improvement = {
-      id: "core",
+    // Create a common root node that connects to all root improvements
+    return {
+      id: "root",
       name: "Core",
-      description: "Connects the Axe and Wagon trees",
+      description: "Starting point for all improvements",
       cost: 0,
       purchased: true,
-      category: "axe",
       tier: 0,
+      locked: false,
+      category: "axe" as ImprovementCategory, // Default category for root
+      children: roots.map(r => allNodes.get(r.id)!).filter(Boolean),
     };
-
-    hub.on("pointerover", () => {
-      const gp = hub.getGlobalPosition();
-      showTooltip(hubInfo, false, gp.x, gp.y);
-    });
-    hub.on("pointerout", () => hideTooltip());
-
-    return hub;
   }
 
-  function layoutTreeRadial(
-    category: "axe" | "wagon",
-    centerX: number,
-    centerY: number,
-    side: "left" | "right"
+  // Render tree using D3.js
+  function renderTreeWithD3(
+    treeData: TreeNodeData,
+    container: HTMLElement,
+    onPurchase: (id: string) => void
   ) {
-    const items = improvements
-      .filter((i) => i.category === category)
-      .sort((a, b) => a.tier - b.tier || a.id.localeCompare(b.id));
+    // Clear container
+    container.innerHTML = "";
 
-    const lines = new Graphics();
-    treeRoot.addChild(lines);
+    // Create SVG container
+    const margin = { top: 20, right: 90, bottom: 30, left: 90 };
+    const width = Math.max(800, container.clientWidth - margin.left - margin.right);
+    const height = Math.max(400, treeData.children?.length ? treeData.children.length * 100 : 400);
 
-    // Tier -> items
-    const tierMap = new Map<number, Improvement[]>();
-    for (const it of items) {
-      tierMap.set(it.tier, [...(tierMap.get(it.tier) ?? []), it]);
-    }
-    const tiers = [...tierMap.keys()].sort((a, b) => a - b);
+    const svg = d3.select(container)
+      .append("svg")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom)
+      .style("background-color", "transparent");
 
-    const nodeById = new Map<string, { node: Container; x: number; y: number }>();
+    const g = svg.append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // Angle ranges for semi-circle (PoE-like clusters)
-    const startAngle = side === "left" ? (Math.PI * 0.65) : (-Math.PI * 0.15);
-    const endAngle = side === "left" ? (Math.PI * 1.35) : (Math.PI * 0.15);
+    // Build D3 hierarchy
+    const root = d3.hierarchy(treeData, d => d.children);
+    
+    // Create tree layout
+    const treeLayout = d3.tree<TreeNodeData>()
+      .size([height, width - 200])
+      .separation((a, b) => (a.parent === b.parent ? 1 : 1.5) / a.depth);
 
-    for (const tier of tiers) {
-      const ringIndex = tiers.indexOf(tier);
-      const ringRadius = ringIndex * RING_GAP;
-      const tierItems = tierMap.get(tier) ?? [];
+    treeLayout(root);
 
-      if (ringIndex === 0) {
-        // Root at center
-        const it = tierItems[0];
-        if (it) {
-          const isLocked = it.requires
-            ? !(hasImprovement && hasImprovement(it.requires))
-            : false;
-          const node = createNode(it, isLocked);
-          node.x = centerX;
-          node.y = centerY;
-          treeRoot.addChild(node);
-          nodeById.set(it.id, { node, x: node.x, y: node.y });
+    // Draw links (edges) with category-based colors
+    g.selectAll(".link")
+      .data(root.links())
+      .enter()
+      .append("path")
+      .attr("class", "link")
+      .attr("d", d3.linkHorizontal<any, any>()
+        .x(d => d.y)
+        .y(d => d.x))
+      .attr("fill", "none")
+      .attr("stroke", d => {
+        const targetData = d.target.data as TreeNodeData;
+        const category = targetData.category;
+        return category ? getCategoryConfig(category).color : "#4169e1";
+      })
+      .attr("stroke-width", 2)
+      .attr("opacity", 0.6);
+
+    // Draw nodes
+    const nodes = g.selectAll(".node")
+      .data(root.descendants())
+      .enter()
+      .append("g")
+      .attr("class", "node")
+      .attr("transform", d => `translate(${d.y},${d.x})`);
+
+    // Node circles
+    nodes.append("circle")
+      .attr("r", d => {
+        const data = d.data as TreeNodeData;
+        return data.id === "root" ? 30 : 25;
+      })
+      .attr("fill", d => {
+        const data = d.data as TreeNodeData;
+        if (data.id === "root") return "#1f1f1f";
+        if (data.locked) return "#333";
+        if (data.purchased) return "#2a4a2a";
+        return "#1f1f1f";
+      })
+      .attr("stroke", d => {
+        const data = d.data as TreeNodeData;
+        if (data.id === "root") return "#4169e1";
+        if (data.locked) return "#666";
+        if (data.purchased) return "#4a8a4a";
+        const category = data.category;
+        return category ? getCategoryConfig(category).color : "#4169e1";
+      })
+      .attr("stroke-width", d => {
+        const data = d.data as TreeNodeData;
+        if (data.id === "root") return 5;
+        return data.tier === 0 ? 4 : 3;
+      })
+      .style("cursor", d => {
+        const data = d.data as TreeNodeData;
+        return data.locked ? "not-allowed" : "pointer";
+      })
+      .attr("data-cursor", d => (d.data as TreeNodeData).locked ? "not-allowed" : "pointer")
+      .on("mouseenter", function(_event, d) {
+        const data = d.data as TreeNodeData;
+        if (!data.locked && data.id !== "root") {
+          const category = data.category;
+          const color = category ? getCategoryConfig(category).color : "#4169e1";
+          d3.select(this)
+            .attr("r", 30)
+            .style("filter", `drop-shadow(0 0 10px ${color})`);
         }
-        continue;
-      }
+      })
+      .on("mouseleave", function(_event, d) {
+        const data = d.data as TreeNodeData;
+        const baseRadius = data.id === "root" ? 30 : 25;
+        d3.select(this)
+          .attr("r", baseRadius)
+          .style("filter", "none");
+      })
+      .on("click", function(_event, d) {
+        const data = d.data as TreeNodeData;
+        if (!data.locked && (!data.purchased || data.repeatable)) {
+          onPurchase(data.id);
+        }
+      });
 
-      const count = tierItems.length;
-      for (let idx = 0; idx < count; idx++) {
-        const it = tierItems[idx];
-        const isLocked = it.requires
-          ? !(hasImprovement && hasImprovement(it.requires))
-          : false;
-        const node = createNode(it, isLocked);
+    // Node labels
+    nodes.append("text")
+      .attr("dy", ".35em")
+      .attr("x", d => (d.children ? -35 : 35))
+      .attr("text-anchor", d => (d.children ? "end" : "start"))
+      .attr("fill", d => {
+        const data = d.data as TreeNodeData;
+        return data.locked ? "#666" : "white";
+      })
+      .attr("font-size", "12px")
+      .attr("font-family", "Arial, sans-serif")
+      .text(d => {
+        const data = d.data as TreeNodeData;
+        return data.name;
+      });
 
-        const t = count === 1 ? 0.5 : idx / (count - 1);
-        const angle = startAngle + (endAngle - startAngle) * t;
-        const x = centerX + Math.cos(angle) * ringRadius;
-        const y = centerY + Math.sin(angle) * ringRadius;
+    // Cost/Level info below node name
+    nodes.append("text")
+      .attr("dy", "1.5em")
+      .attr("x", d => (d.children ? -35 : 35))
+      .attr("text-anchor", d => (d.children ? "end" : "start"))
+      .attr("fill", d => {
+        const data = d.data as TreeNodeData;
+        return data.locked ? "#666" : "#aaa";
+      })
+      .attr("font-size", "10px")
+      .attr("font-family", "Arial, sans-serif")
+      .text(d => {
+        const data = d.data as TreeNodeData;
+        if (data.repeatable && data.level !== undefined) {
+          return `L${data.level} - ${data.cost}`;
+        } else if (!data.purchased) {
+          return `${data.cost}`;
+        } else {
+          return "✓";
+        }
+      });
 
-        node.x = x;
-        node.y = y;
-        treeRoot.addChild(node);
-        nodeById.set(it.id, { node, x, y });
-      }
-    }
-
-    // Draw curved connections (quadratic Beziers)
-    lines.clear();
-    for (const it of items) {
-      if (!it.requires) continue;
-      const from = nodeById.get(it.requires);
-      const to = nodeById.get(it.id);
-      if (!from || !to) continue;
-
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      const mx = (from.x + to.x) / 2;
-      const my = (from.y + to.y) / 2;
-      const nx = -dy;
-      const ny = dx;
-      const len = Math.max(1, Math.sqrt(nx * nx + ny * ny));
-      const bend = 18;
-      const cx = mx + (nx / len) * bend;
-      const cy = my + (ny / len) * bend;
-
-      // Offset start/end slightly so it connects to the edge of the node circle
-      const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-      const sx = from.x + (dx / dist) * (NODE_R + 2);
-      const sy = from.y + (dy / dist) * (NODE_R + 2);
-      const ex = to.x - (dx / dist) * (NODE_R + 2);
-      const ey = to.y - (dy / dist) * (NODE_R + 2);
-
-      lines.moveTo(sx, sy);
-      lines.quadraticCurveTo(cx, cy, ex, ey);
-    }
-    // Stroke after the path is built (Pixi Graphics API)
-    lines.stroke({ width: 2, color: 0x5a7ae1, alpha: 0.75 });
+    // Tooltips
+    nodes.append("title")
+      .text(d => {
+        const data = d.data as TreeNodeData;
+        return `${data.name}\n${data.description}\nCost: ${data.cost}`;
+      });
   }
 
-  function updateItems() {
-    treeRoot.removeChildren();
-    hideTooltip();
+  // Build and render single unified tree
+  function buildTree() {
+    treeContainer.innerHTML = "";
 
-    const contentW = MENU_WIDTH - MENU_PADDING * 2;
-    const sectionW = (contentW - SECTION_GAP) / 2;
-    const axeX = 0;
-    const wagonX = sectionW + SECTION_GAP;
-    const sectionY = 10;
-
-    treeRoot.addChild(createSectionTitle("Axe Improvements", axeX, 0));
-    treeRoot.addChild(createSectionTitle("Wagon Improvements", wagonX, 0));
-
-    const centerY = sectionY + 220;
-    const hubX = contentW / 2;
-    const rootSpacing = Math.min(140, sectionW / 2 - 60);
-    const axeRootX = hubX - rootSpacing;
-    const wagonRootX = hubX + rootSpacing;
-
-    // Subtle background ring guides (PoE-ish)
-    const guides = new Graphics();
-    for (let r = 0; r <= 3; r++) {
-      guides.circle(axeRootX, centerY, r * RING_GAP);
-      guides.circle(wagonRootX, centerY, r * RING_GAP);
+    // Build single tree from all improvements
+    const treeData = buildTreeData(improvements, hasImprovement);
+    if (treeData) {
+      const treeDiv = document.createElement("div");
+      treeDiv.style.cssText = "width: 100%; overflow: auto;";
+      treeContainer.appendChild(treeDiv);
+      renderTreeWithD3(treeData, treeDiv, onPurchase);
     }
-    guides.stroke({ width: 1, color: 0xffffff, alpha: 0.06 });
-    treeRoot.addChildAt(guides, 0);
-
-    // Central hub + connectors
-    const hubNode = createHubNode(hubX, centerY);
-    treeRoot.addChild(hubNode);
-
-    const hubLines = new Graphics();
-
-    const linkBend = 22;
-    // Hub -> Axe root
-    hubLines.moveTo(hubX - (NODE_R + 12), centerY);
-    hubLines.quadraticCurveTo(
-      (hubX + axeRootX) / 2,
-      centerY - linkBend,
-      axeRootX + (NODE_R + 12),
-      centerY
-    );
-    // Hub -> Wagon root
-    hubLines.moveTo(hubX + (NODE_R + 12), centerY);
-    hubLines.quadraticCurveTo(
-      (hubX + wagonRootX) / 2,
-      centerY - linkBend,
-      wagonRootX - (NODE_R + 12),
-      centerY
-    );
-    // Stroke after the path is built (Pixi Graphics API)
-    hubLines.stroke({ width: 3, color: 0x5a7ae1, alpha: 0.65 });
-    treeRoot.addChildAt(hubLines, 1);
-
-    // Trees
-    layoutTreeRadial("axe", axeRootX, centerY, "left");
-    layoutTreeRadial("wagon", wagonRootX, centerY, "right");
   }
 
-  updateItems();
-
-  const handleWheel = (e: WheelEvent) => {
-    if (!container.visible) return;
-    const menuRect = {
-      left: container.x,
-      top: container.y,
-      right: container.x + MENU_WIDTH,
-      bottom: container.y + MENU_HEIGHT,
-    };
-    if (
-      e.clientX >= menuRect.left &&
-      e.clientX <= menuRect.right &&
-      e.clientY >= menuRect.top &&
-      e.clientY <= menuRect.bottom
-    ) {
-      e.preventDefault();
-      // Zoom around mouse position (PoE-like)
-      const delta = e.deltaY || 0;
-      const zoomFactor = delta > 0 ? 0.92 : 1.08;
-      const nextScale = Math.max(0.6, Math.min(1.8, treeScale * zoomFactor));
-      if (nextScale === treeScale) return;
-
-      const local = treeViewport.toLocal({ x: e.clientX, y: e.clientY });
-      const beforeX = (local.x - treeRoot.x) / treeScale;
-      const beforeY = (local.y - treeRoot.y) / treeScale;
-
-      treeScale = nextScale;
-      treeRoot.scale.set(treeScale);
-
-      const afterX = beforeX * treeScale + treeRoot.x;
-      const afterY = beforeY * treeScale + treeRoot.y;
-      treeRoot.x += local.x - afterX;
-      treeRoot.y += local.y - afterY;
+  function show() {
+    modal.style.display = "block";
+    buildTree();
+    
+    // Hide custom cursor container if provided
+    if (cursorContainer?.container) {
+      cursorContainer.container.visible = false;
     }
-  };
+    
+    // Show standard cursor when menu is open - use !important to override
+    // But allow pointer cursor on clickable elements
+    const style = document.createElement("style");
+    style.id = "improvements-menu-cursor-style";
+    style.textContent = `
+      html, body, canvas, #improvements-modal, #improvements-modal * {
+        cursor: default !important;
+      }
+      #improvements-modal svg circle[data-cursor="pointer"]:hover,
+      #improvements-modal svg circle[data-cursor="pointer"] {
+        cursor: pointer !important;
+      }
+      #improvements-modal svg circle[data-cursor="not-allowed"] {
+        cursor: not-allowed !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
 
-  window.addEventListener("wheel", handleWheel, { passive: false });
+  function hide() {
+    modal.style.display = "none";
+    
+    // Show custom cursor container again if provided
+    if (cursorContainer?.container) {
+      cursorContainer.container.visible = true;
+    }
+    
+    // Remove the cursor override style
+    const style = document.getElementById("improvements-menu-cursor-style");
+    if (style) {
+      document.head.removeChild(style);
+    }
+  }
 
-  treeViewport.eventMode = "static";
-  treeViewport.cursor = "grab";
-  treeViewport.on("pointerdown", (e) => {
-    isDragging = true;
-    treeViewport.cursor = "grabbing";
-    dragStartX = e.global.x;
-    dragStartY = e.global.y;
-    treeStartX = treeRoot.x;
-    treeStartY = treeRoot.y;
-  });
-  treeViewport.on("pointerup", () => {
-    isDragging = false;
-    treeViewport.cursor = "grab";
-  });
-  treeViewport.on("pointerupoutside", () => {
-    isDragging = false;
-    treeViewport.cursor = "grab";
-  });
-  treeViewport.on("pointermove", (e) => {
-    if (!isDragging) return;
-    treeRoot.x = treeStartX + (e.global.x - dragStartX);
-    treeRoot.y = treeStartY + (e.global.y - dragStartY);
-  });
+  function update(newImprovements: Improvement[]) {
+    improvements = newImprovements;
+    if (modal.style.display !== "none") {
+      buildTree();
+    }
+  }
 
-  return {
-    container,
-    show: () => {
-      container.visible = true;
-    },
-    hide: () => {
-      container.visible = false;
-    },
-    update: (newImprovements: Improvement[]) => {
-      improvements = newImprovements;
-      updateItems();
-    },
-    destroy: () => {
-      window.removeEventListener("wheel", handleWheel);
-    },
-  };
+  function destroy() {
+    window.removeEventListener("keydown", handleEscape);
+    if (document.body.contains(modal)) {
+      document.body.removeChild(modal);
+    }
+  }
+
+  return { show, hide, update, destroy };
 }

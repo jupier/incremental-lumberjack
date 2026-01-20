@@ -2,8 +2,9 @@ import { Application, Container, extensions, CullerPlugin } from "pixi.js";
 
 // Register CullerPlugin for performance optimization (only render visible objects)
 extensions.add(CullerPlugin);
-import { createMap } from "./map";
+import { createMap, addTreesToMap } from "./map";
 import { createWoodCounter } from "./wood-counter";
+import { createTree } from "./tree";
 import { createImprovementsMenu, Improvement } from "./improvements-menu";
 import { PlayerStateManager } from "./player-state";
 import { getAllImprovements, getImprovementNextCost } from "./improvements";
@@ -56,11 +57,16 @@ const tileSize = Math.floor(Math.max(
   window.innerHeight / mapHeight
 ));
 
+// Initialize player state manager first to get initial config
+const playerStateManager = new PlayerStateManager();
+const initialMapConfig = playerStateManager.getConfig();
+
 // Create the map with separate containers for grass and trees
 const { grassContainer, treesContainer, tiles } = createMap({
   width: mapWidth,
   height: mapHeight,
   tileSize: tileSize,
+  treeDensity: initialMapConfig.treeDensity,
 });
 
 // Enable culling on containers for performance (only render visible tiles)
@@ -76,17 +82,11 @@ world.addChild(grassContainer);
 // Add trees last (top layer)
 world.addChild(treesContainer);
 
-// Setup custom axe cursor with cooldown display
-const { triggerSwing, updateCooldown: updateAxeCooldown } = setupAxeCursor(app);
-
 // Create wood counter
 const { container: woodCounter, updateCount: updateWoodCount } =
   createWoodCounter();
 app.stage.addChild(woodCounter);
 let globalWoodCount = 0;
-
-// Initialize player state manager
-const playerStateManager = new PlayerStateManager();
 
 // Create improvements menu - get all improvements from centralized file
 const improvements: Improvement[] = getAllImprovements();
@@ -107,8 +107,12 @@ function syncImprovementsFromState(): void {
 
 syncImprovementsFromState();
 
+// Setup custom axe cursor with cooldown display
+const initialCursorConfig = playerStateManager.getConfig();
+const { triggerSwing, updateCooldown: updateAxeCooldown, updateRadius: updateCursorRadius, container: cursorContainer } = setupAxeCursor(app, initialCursorConfig.cursorRadius);
+
+// Create improvements menu (pass cursor container to hide/show it)
 const {
-  container: improvementsMenu,
   show: showImprovementsMenu,
   hide: hideImprovementsMenu,
   update: updateImprovementsMenu,
@@ -133,6 +137,8 @@ const {
         // Get updated config
         const config = playerStateManager.getConfig();
 
+        // Update cursor radius if it changed
+        updateCursorRadius(config.cursorRadius);
 
         // Update existing trees' health if Sharpened Blade was purchased
         if (improvementId === "sharpened_blade") {
@@ -148,12 +154,26 @@ const {
           });
         }
 
+        // Add more trees if "more_trees" improvement was purchased
+        if (improvementId === "more_trees") {
+          const treesAdded = addTreesToMap(
+            tiles,
+            treesContainer,
+            mapWidth,
+            mapHeight,
+            tileSize,
+            config.treeDensity,
+            "normal"
+          );
+          console.log(`Added ${treesAdded} new trees to the map`);
+        }
+
       }
     }
   },
-  (improvementId: string) => playerStateManager.hasImprovement(improvementId)
+  (improvementId: string) => playerStateManager.hasImprovement(improvementId),
+  { container: cursorContainer }
 );
-app.stage.addChild(improvementsMenu);
 
 // Setup mouse-based tree destruction
 setupMouseTreeDestruction(
@@ -190,7 +210,34 @@ setupMouseTreeDestruction(
       }
     );
   },
-  triggerSwing // Pass swing trigger to mouse tree destruction
+  triggerSwing, // Pass swing trigger to mouse tree destruction
+  () => playerStateManager.getConfig().cursorRadius, // Pass cursor radius getter
+  (tileX: number, tileY: number) => {
+    // Handle tree respawn when a tree is cut
+    const config = playerStateManager.getConfig();
+    if (config.treeRespawnEnabled) {
+      // Respawn tree after a delay (2 seconds)
+      setTimeout(() => {
+        const tile = tiles[tileY]?.[tileX];
+        // Only respawn if tile is still empty
+        if (tile && tile.item === null) {
+          const tree = createTree("normal");
+          const treeX = tileX * tileSize + tileSize / 2;
+          const treeY = tileY * tileSize + tileSize / 2;
+
+          tree.x = treeX;
+          tree.y = treeY;
+          tree.cullable = true;
+          treesContainer.addChild(tree);
+
+          // Update tile data
+          tile.item = "tree";
+          tile.tree = tree;
+          tile.treeType = "normal";
+        }
+      }, 2000); // 2 second delay
+    }
+  }
 );
 
 // Handle Tab key to show/hide improvements menu (works anywhere)

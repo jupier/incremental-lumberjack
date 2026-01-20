@@ -9,7 +9,7 @@
 import { PlayerConfig } from "./player-state";
 import { Improvement } from "./improvements-menu";
 
-export type ImprovementCategory = "axe";
+export type ImprovementCategory = "axe" | "cursor" | "map";
 
 /**
  * Improvement effect functions
@@ -34,6 +34,18 @@ export const IMPROVEMENT_EFFECTS: Record<
     ...config,
     areaChopEnabled: true,
   }),
+  larger_cursor: (config: PlayerConfig) => ({
+    ...config,
+    cursorRadius: config.cursorRadius + 8, // Increase cursor radius by 8 pixels
+  }),
+  more_trees: (config: PlayerConfig) => ({
+    ...config,
+    treeDensity: Math.min(1.0, config.treeDensity + 0.15), // Increase tree density by 15%
+  }),
+  tree_respawn: (config: PlayerConfig) => ({
+    ...config,
+    treeRespawnEnabled: true, // Enable tree respawning
+  }),
 };
 
 /**
@@ -53,14 +65,6 @@ export const IMPROVEMENTS_DATA: Record<
     tier: number; // for tree layout
   }
 > = {
-  axe_root: {
-    id: "axe_root",
-    name: "Axe",
-    description: "Unlock the axe improvement tree",
-    baseCost: 0,
-    category: "axe",
-    tier: 0,
-  },
   improved_axe: {
     id: "improved_axe",
     name: "Improved Axe",
@@ -68,7 +72,6 @@ export const IMPROVEMENTS_DATA: Record<
     baseCost: 2,
     category: "axe",
     tier: 1,
-    requires: "axe_root",
   },
   sharpened_blade: {
     id: "sharpened_blade",
@@ -87,6 +90,33 @@ export const IMPROVEMENTS_DATA: Record<
     requires: "sharpened_blade",
     category: "axe",
     tier: 3,
+  },
+  larger_cursor: {
+    id: "larger_cursor",
+    name: "Larger Cursor",
+    description: "Increases cursor/hit zone size by 8 pixels",
+    baseCost: 5,
+    category: "cursor",
+    tier: 2,
+  },
+  more_trees: {
+    id: "more_trees",
+    name: "More Trees",
+    description: "Increases tree density on the map by 15%",
+    baseCost: 8,
+    costScaling: 1.5,
+    repeatable: true,
+    category: "map",
+    tier: 1,
+  },
+  tree_respawn: {
+    id: "tree_respawn",
+    name: "Tree Respawn",
+    description: "Trees automatically respawn after being cut",
+    baseCost: 20,
+    category: "map",
+    tier: 2,
+    requires: "more_trees",
   },
 };
 

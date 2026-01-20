@@ -3,9 +3,8 @@ import { Graphics, Application, Container } from "pixi.js";
 /**
  * Create a circle cursor that also shows cooldown
  */
-function createCircleCursor(): Graphics {
+function createCircleCursor(radius: number): Graphics {
   const circle = new Graphics();
-  const radius = 12; // Circle radius
   
   // Draw circle outline
   circle.circle(0, 0, radius);
@@ -24,13 +23,16 @@ function createCircleCursor(): Graphics {
 /**
  * Update circle cursor to show cooldown state as a loading ring
  */
-function updateCircleCursor(circle: Graphics, progress: number): void {
-  const radius = 12;
+function updateCircleCursor(circle: Graphics, progress: number, radius: number): void {
   const strokeWidth = 3;
   circle.clear();
   
+  // Draw the hit zone area with a semi-transparent fill
+  circle.circle(0, 0, radius);
+  circle.fill({ color: 0x00ff00, alpha: 0.2 }); // Light green with transparency
+  
   if (progress >= 1 || progress <= 0) {
-    // Ready state - white circle border, no fill
+    // Ready state - white circle border
     circle.circle(0, 0, radius);
     circle.stroke({ width: strokeWidth, color: 0xffffff });
   } else {
@@ -69,8 +71,9 @@ function updateCircleCursor(circle: Graphics, progress: number): void {
  */
 export function setupAxeCursor(
   app: Application,
+  initialRadius: number,
   onCooldownUpdate?: (progress: number) => void
-): { container: Container; triggerSwing: () => void; updateCooldown: (progress: number) => void } {
+): { container: Container; triggerSwing: () => void; updateCooldown: (progress: number) => void; updateRadius: (radius: number) => void } {
   // Hide default cursor everywhere
   app.canvas.style.cursor = "none";
   document.body.style.cursor = "none";
@@ -88,13 +91,14 @@ export function setupAxeCursor(
   app.canvas.addEventListener("mouseover", hideCursor);
   window.addEventListener("mousemove", hideCursor);
 
-  // Create circle cursor
-  const circleCursor = createCircleCursor();
+  // Create circle cursor with initial radius
+  let currentRadius = initialRadius;
+  const circleCursor = createCircleCursor(currentRadius);
   const cursorContainer = new Container();
   cursorContainer.addChild(circleCursor);
   
   // Initialize circle (ready state)
-  updateCircleCursor(circleCursor, 1);
+  updateCircleCursor(circleCursor, 1, currentRadius);
   
   // Add to stage (on top of everything)
   app.stage.addChild(cursorContainer);
@@ -132,7 +136,14 @@ export function setupAxeCursor(
       cooldownUpdateCallback(progress);
     }
     // Update circle cursor to show cooldown state
-    updateCircleCursor(circleCursor, progress);
+    updateCircleCursor(circleCursor, progress, currentRadius);
+  };
+  
+  // Expose function to update radius
+  const updateRadius = (radius: number) => {
+    currentRadius = radius;
+    // Redraw cursor with new radius
+    updateCircleCursor(circleCursor, 1, currentRadius);
   };
   
   // No-op swing function (no animation needed for circle)
@@ -143,6 +154,7 @@ export function setupAxeCursor(
   return { 
     container: cursorContainer, 
     triggerSwing,
-    updateCooldown 
+    updateCooldown,
+    updateRadius
   };
 }

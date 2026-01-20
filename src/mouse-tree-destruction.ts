@@ -1,4 +1,4 @@
-import { Application, Container, Graphics, Point } from "pixi.js";
+import { Application, Container, Graphics } from "pixi.js";
 import { TileData } from "./map";
 import { PlayerConfig } from "./player-state";
 
@@ -26,7 +26,8 @@ function hitTreeAtTile(
   tileSize: number,
   treesContainer: Container,
   config?: PlayerConfig,
-  onWoodCollected?: (count: number, worldX: number, worldY: number) => void
+  onWoodCollected?: (count: number, worldX: number, worldY: number) => void,
+  onTreeCut?: (tileX: number, tileY: number) => void
 ): void {
   // Check bounds
   if (
@@ -103,6 +104,11 @@ function hitTreeAtTile(
         const tileCenterX = x * tileSize + tileSize / 2;
         const tileCenterY = y * tileSize + tileSize / 2;
 
+        // Notify that a tree was cut (for respawn system)
+        if (onTreeCut) {
+          onTreeCut(x, y);
+        }
+
         // Automatically collect wood (trigger animation)
         if (onWoodCollected) {
           onWoodCollected(woodDropCount, tileCenterX, tileCenterY);
@@ -126,7 +132,9 @@ export function setupMouseTreeDestruction(
   getConfig?: () => PlayerConfig,
   onCooldownUpdate?: (progress: number) => void,
   onWoodCollected?: (count: number, worldX: number, worldY: number) => void,
-  onAxeSwing?: () => void
+  onAxeSwing?: () => void,
+  getCursorRadius?: () => number,
+  onTreeCut?: (tileX: number, tileY: number) => void
 ): void {
   let hitCooldown = 0;
   let hitCooldownDuration = 1.0;
@@ -160,29 +168,45 @@ export function setupMouseTreeDestruction(
   let currentMouseWorldX = 0;
   let currentMouseWorldY = 0;
 
-  // Find tree at world coordinates using Pixi.js built-in hit testing
-  const findTreeAtWorldPosition = (worldX: number, worldY: number): { tileX: number; tileY: number } | null => {
-    // Create a point in world coordinates
-    const worldPoint = new Point(worldX, worldY);
+  // Find all trees within cursor radius at world coordinates
+  const findTreesAtWorldPosition = (worldX: number, worldY: number): Array<{ tileX: number; tileY: number }> => {
+    // Get current cursor radius from config
+    const cursorRadius = getCursorRadius ? getCursorRadius() : 12;
+    const foundTrees: Array<{ tileX: number; tileY: number }> = [];
     
-    // Check all trees to see if click is within their actual drawn shape
+    // Check all trees to see if any part of the tree is within cursor radius
     for (let y = 0; y < mapHeight; y++) {
       for (let x = 0; x < mapWidth; x++) {
         const tile = tiles[y]?.[x];
         if (tile && tile.item === "tree" && tile.tree) {
           const tree = tile.tree;
+          const treeWorldX = tree.x;
+          const treeWorldY = tree.y;
           
-          // Convert world point to tree's local coordinate space
-          const localPoint = tree.toLocal(worldPoint);
+          // Calculate distance from cursor center to tree center
+          const dx = worldX - treeWorldX;
+          const dy = worldY - treeWorldY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
           
-          // Use Pixi.js built-in hit testing - checks against actual drawn geometry
-          if (tree.containsPoint(localPoint)) {
-            return { tileX: x, tileY: y };
+          // Check if tree is within cursor radius
+          // We check if the tree center is within radius, or if any part of the tree
+          // (accounting for tree size) is within the cursor radius
+          const treeType = (tree as any).treeType || "normal";
+          let treeRadius = 20; // Approximate tree radius
+          if (treeType === "strong") {
+            treeRadius = 30;
+          } else if (treeType === "ancient") {
+            treeRadius = 40;
+          }
+          
+          // Tree is hit if cursor overlaps with tree (distance < cursorRadius + treeRadius)
+          if (distance <= cursorRadius + treeRadius) {
+            foundTrees.push({ tileX: x, tileY: y });
           }
         }
       }
     }
-    return null;
+    return foundTrees;
   };
 
   // Update mouse position on mouse move (for continuous hitting)
@@ -217,11 +241,10 @@ export function setupMouseTreeDestruction(
     currentMouseWorldX = worldX;
     currentMouseWorldY = worldY;
 
-    // Find tree at click position (check actual tree bounds)
-    const treePosition = findTreeAtWorldPosition(worldX, worldY);
+    // Find all trees within cursor radius at click position
+    const treePositions = findTreesAtWorldPosition(worldX, worldY);
     
-    if (treePosition) {
-
+    if (treePositions.length > 0) {
       // Try to hit immediately if cooldown allows
       if (canHit) {
         // Trigger axe swing animation
@@ -230,17 +253,22 @@ export function setupMouseTreeDestruction(
         }
         
         const currentConfig = getConfig ? getConfig() : undefined;
-        hitTreeAtTile(
-          treePosition.tileX,
-          treePosition.tileY,
-          tiles,
-          mapWidth,
-          mapHeight,
-          tileSize,
-          treesContainer,
-          currentConfig,
-          onWoodCollected || undefined
-        );
+        
+        // Hit all trees within cursor radius
+        treePositions.forEach((treePosition) => {
+          hitTreeAtTile(
+            treePosition.tileX,
+            treePosition.tileY,
+            tiles,
+            mapWidth,
+            mapHeight,
+            tileSize,
+            treesContainer,
+            currentConfig,
+            onWoodCollected || undefined,
+            onTreeCut
+          );
+        });
 
         // Start cooldown
         hitCooldown = hitCooldownDuration;
@@ -265,30 +293,39 @@ export function setupMouseTreeDestruction(
   // Continuous hitting while mouse is held down (respects cooldown)
   app.ticker.add(() => {
     if (isMouseDown && canHit) {
-      // Find tree at current mouse position (allows switching trees while holding)
-      const treePosition = findTreeAtWorldPosition(currentMouseWorldX, currentMouseWorldY);
+      // Find all trees within cursor radius at current mouse position
+      const treePositions = findTreesAtWorldPosition(currentMouseWorldX, currentMouseWorldY);
       
-      if (treePosition) {
-        // Verify tree still exists at this position
-        const tile = tiles[treePosition.tileY]?.[treePosition.tileX];
-        if (tile && tile.item === "tree" && tile.tree) {
+      if (treePositions.length > 0) {
+        // Verify trees still exist and hit all of them
+        const validTreePositions = treePositions.filter((treePosition) => {
+          const tile = tiles[treePosition.tileY]?.[treePosition.tileX];
+          return tile && tile.item === "tree" && tile.tree;
+        });
+        
+        if (validTreePositions.length > 0) {
           // Trigger axe swing animation
           if (onAxeSwing) {
             onAxeSwing();
           }
           
           const currentConfig = getConfig ? getConfig() : undefined;
-          hitTreeAtTile(
-            treePosition.tileX,
-            treePosition.tileY,
-            tiles,
-            mapWidth,
-            mapHeight,
-            tileSize,
-            treesContainer,
-            currentConfig,
-            onWoodCollected || undefined
-          );
+          
+          // Hit all trees within cursor radius
+          validTreePositions.forEach((treePosition) => {
+            hitTreeAtTile(
+              treePosition.tileX,
+              treePosition.tileY,
+              tiles,
+              mapWidth,
+              mapHeight,
+              tileSize,
+              treesContainer,
+              currentConfig,
+              onWoodCollected || undefined,
+              onTreeCut
+            );
+          });
 
           // Start cooldown
           hitCooldown = hitCooldownDuration;

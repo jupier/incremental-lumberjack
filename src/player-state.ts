@@ -12,6 +12,10 @@ export interface PlayerConfig {
   axeCooldownDuration: number; // in seconds
   treeMaxHealth: number; // Maximum health of trees (default 3, reduced to 2 with Sharpened Blade)
   areaChopEnabled: boolean; // Hit all trees in 3x3 area
+  cursorRadius: number; // Radius of the cursor/hit zone in pixels
+  // Map
+  treeDensity: number; // Probability of a tile having a tree (0-1)
+  treeRespawnEnabled: boolean; // Whether trees respawn after being cut
 }
 
 /**
@@ -21,6 +25,9 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   axeCooldownDuration: 1.0, // 1 second
   treeMaxHealth: 3, // Trees have 3 health by default
   areaChopEnabled: false,
+  cursorRadius: 12, // Default cursor radius in pixels
+  treeDensity: 0.2, // 20% of tiles have trees by default
+  treeRespawnEnabled: false, // Trees don't respawn by default
 };
 
 /**

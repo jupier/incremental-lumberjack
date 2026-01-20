@@ -7,6 +7,7 @@ export interface MapConfig {
   width: number; // Number of tiles wide
   height: number; // Number of tiles tall
   tileSize: number; // Size of each tile in pixels
+  treeDensity?: number; // Probability of a tile having a tree (0-1)
 }
 
 export interface TileData {
@@ -26,7 +27,7 @@ export function createMap(config: MapConfig): {
   const grassContainer = new Container();
   const treesContainer = new Container();
   const tiles: TileData[][] = [];
-  const TREE_DENSITY = 0.75; // 75% of tiles get trees
+  const TREE_DENSITY = config.treeDensity ?? 0.2; // Default 20% of tiles get trees
   const tileSize = config.tileSize;
 
   // Phase 1: Create all grass tiles first
@@ -60,11 +61,9 @@ export function createMap(config: MapConfig): {
         continue; // Leave border tiles empty
       }
       
-      // Place trees randomly across the map
+      // Place trees randomly across the map (only normal trees by default)
       if (Math.random() < TREE_DENSITY) {
-        const roll = Math.random();
-        const treeType: TreeType =
-          roll < 0.08 ? "ancient" : roll < 0.25 ? "strong" : "normal";
+        const treeType: TreeType = "normal"; // Only normal trees by default
         const tree = createTree(treeType);
         const treeX = x * tileSize + tileSize / 2;
         const treeY = y * tileSize + tileSize / 2;
@@ -84,6 +83,52 @@ export function createMap(config: MapConfig): {
   }
 
   return { grassContainer, treesContainer, tiles };
+}
+
+/**
+ * Add trees to empty tiles on the map
+ */
+export function addTreesToMap(
+  tiles: TileData[][],
+  treesContainer: Container,
+  mapWidth: number,
+  mapHeight: number,
+  tileSize: number,
+  treeDensity: number,
+  treeType: TreeType = "normal"
+): number {
+  let treesAdded = 0;
+  
+  for (let y = 0; y < mapHeight; y++) {
+    for (let x = 0; x < mapWidth; x++) {
+      // Skip border tiles
+      const isBorder = x === 0 || x === mapWidth - 1 || y === 0 || y === mapHeight - 1;
+      if (isBorder) {
+        continue;
+      }
+      
+      const tile = tiles[y]?.[x];
+      // Only add trees to empty tiles
+      if (tile && tile.item === null && Math.random() < treeDensity) {
+        const tree = createTree(treeType);
+        const treeX = x * tileSize + tileSize / 2;
+        const treeY = y * tileSize + tileSize / 2;
+
+        tree.x = treeX;
+        tree.y = treeY;
+        tree.cullable = true;
+        treesContainer.addChild(tree);
+
+        // Update tile data with tree reference
+        tile.item = "tree";
+        tile.tree = tree;
+        tile.treeType = treeType;
+        treesAdded++;
+      }
+    }
+  }
+  
+  return treesAdded;
 }
 
 function createGrassTile(tileSize: number, isRightEdge: boolean, isBottomEdge: boolean, isBorder: boolean = false): Graphics {

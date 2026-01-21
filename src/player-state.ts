@@ -1,7 +1,7 @@
 /**
  * Player State Management System
  *
- * This module manages the game configuration (axe cooldown, tree health, etc.).
+ * Manages the game configuration (axe cooldown, tree health, cursor radius, etc.).
  * Improvements are defined in improvements.ts
  */
 
@@ -10,24 +10,27 @@ import { getImprovementData, getImprovementEffect } from "./improvements";
 export interface PlayerConfig {
   // Combat
   axeCooldownDuration: number; // in seconds
-  treeMaxHealth: number; // Maximum health of trees (default 3, reduced to 2 with Sharpened Blade)
-  areaChopEnabled: boolean; // Hit all trees in 3x3 area
+  treeMaxHealth: number; // Maximum health of trees (default 3)
   cursorRadius: number; // Radius of the cursor/hit zone in pixels
   // Map
   treeDensity: number; // Probability of a tile having a tree (0-1)
   treeRespawnEnabled: boolean; // Whether trees respawn after being cut
+  // Tree types enabled
+  strongTreesEnabled: boolean; // Whether strong trees can spawn
+  ancientTreesEnabled: boolean; // Whether ancient trees can spawn
 }
 
 /**
  * Default player configuration
  */
 export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
-  axeCooldownDuration: 1.0, // 1 second
+  axeCooldownDuration: 2.0, // 2 seconds - very slow to start
   treeMaxHealth: 3, // Trees have 3 health by default
-  areaChopEnabled: false,
-  cursorRadius: 12, // Default cursor radius in pixels
-  treeDensity: 0.2, // 20% of tiles have trees by default
+  cursorRadius: 4, // Very small cursor radius to start (4 pixels)
+  treeDensity: 0.05, // Very low tree density to start (5% of tiles)
   treeRespawnEnabled: false, // Trees don't respawn by default
+  strongTreesEnabled: false, // Strong trees locked by default
+  ancientTreesEnabled: false, // Ancient trees locked by default
 };
 
 /**
@@ -40,10 +43,6 @@ export class PlayerStateManager {
 
   constructor(initialConfig: PlayerConfig = DEFAULT_PLAYER_CONFIG) {
     this.config = { ...initialConfig };
-
-    // Root node is unlocked by default so the tree is visible and usable immediately.
-    // This is a no-op improvement, but we record it as "purchased" for prerequisite checks.
-    this.purchaseImprovement("axe_root");
   }
 
   /**
@@ -84,22 +83,4 @@ export class PlayerStateManager {
     return { ...this.config };
   }
 
-  /**
-   * Get all purchased improvements
-   */
-  getPurchasedImprovements(): ReadonlySet<string> {
-    return new Set(
-      [...this.improvementLevels.entries()]
-        .filter(([, level]) => level > 0)
-        .map(([id]) => id)
-    );
-  }
-
-  /**
-   * Reset to default (useful for testing or new game)
-   */
-  reset(): void {
-    this.config = { ...DEFAULT_PLAYER_CONFIG };
-    this.improvementLevels.clear();
-  }
 }

@@ -8,6 +8,8 @@ export interface MapConfig {
   height: number; // Number of tiles tall
   tileSize: number; // Size of each tile in pixels
   treeDensity?: number; // Probability of a tile having a tree (0-1)
+  strongTreesEnabled?: boolean; // Whether strong trees can spawn
+  ancientTreesEnabled?: boolean; // Whether ancient trees can spawn
 }
 
 export interface TileData {
@@ -61,9 +63,24 @@ export function createMap(config: MapConfig): {
         continue; // Leave border tiles empty
       }
       
-      // Place trees randomly across the map (only normal trees by default)
+      // Place trees randomly across the map
       if (Math.random() < TREE_DENSITY) {
-        const treeType: TreeType = "normal"; // Only normal trees by default
+        // Choose tree type based on enabled types
+        const enabledTypes: TreeType[] = ["normal"];
+        if (config.strongTreesEnabled) enabledTypes.push("strong");
+        if (config.ancientTreesEnabled) enabledTypes.push("ancient");
+        
+        // Weighted random selection (normal: 70%, strong: 25%, ancient: 5% if enabled)
+        let treeType: TreeType = "normal";
+        const rand = Math.random();
+        if (config.ancientTreesEnabled && rand < 0.05) {
+          treeType = "ancient";
+        } else if (config.strongTreesEnabled && rand < 0.30) {
+          treeType = "strong";
+        } else {
+          treeType = "normal";
+        }
+        
         const tree = createTree(treeType);
         const treeX = x * tileSize + tileSize / 2;
         const treeY = y * tileSize + tileSize / 2;
@@ -95,7 +112,8 @@ export function addTreesToMap(
   mapHeight: number,
   tileSize: number,
   treeDensity: number,
-  treeType: TreeType = "normal"
+  strongTreesEnabled: boolean = false,
+  ancientTreesEnabled: boolean = false
 ): number {
   let treesAdded = 0;
   
@@ -110,6 +128,17 @@ export function addTreesToMap(
       const tile = tiles[y]?.[x];
       // Only add trees to empty tiles
       if (tile && tile.item === null && Math.random() < treeDensity) {
+        // Choose tree type based on enabled types (weighted random)
+        let treeType: TreeType = "normal";
+        const rand = Math.random();
+        if (ancientTreesEnabled && rand < 0.05) {
+          treeType = "ancient";
+        } else if (strongTreesEnabled && rand < 0.30) {
+          treeType = "strong";
+        } else {
+          treeType = "normal";
+        }
+        
         const tree = createTree(treeType);
         const treeX = x * tileSize + tileSize / 2;
         const treeY = y * tileSize + tileSize / 2;

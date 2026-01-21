@@ -5,7 +5,7 @@ extensions.add(CullerPlugin);
 import { createMap, addTreesToMap } from "./map";
 import { createWoodCounter } from "./wood-counter";
 import { createRoundTimer } from "./round-timer";
-import { createTree } from "./tree";
+import { createTree, TreeType } from "./tree";
 import { createImprovementsMenu, Improvement } from "./improvements-menu";
 import { PlayerStateManager } from "./player-state";
 import { getAllImprovements, getImprovementNextCost } from "./improvements";
@@ -68,6 +68,8 @@ const { grassContainer, treesContainer, tiles } = createMap({
   height: mapHeight,
   tileSize: tileSize,
   treeDensity: initialMapConfig.treeDensity,
+  strongTreesEnabled: initialMapConfig.strongTreesEnabled,
+  ancientTreesEnabled: initialMapConfig.ancientTreesEnabled,
 });
 
 // Enable culling on containers for performance (only render visible tiles)
@@ -150,20 +152,6 @@ const {
         // Update cursor radius if it changed
         updateCursorRadius(config.cursorRadius);
 
-        // Update existing trees' health if Sharpened Blade was purchased
-        if (improvementId === "sharpened_blade") {
-          treesContainer.children.forEach((child) => {
-            const tree = child as any;
-            const baseMaxHealth = tree.baseMaxHealth ?? tree.maxHealth ?? 3;
-            const reduction = Math.max(0, 3 - config.treeMaxHealth);
-            const effectiveMaxHealth = Math.max(1, baseMaxHealth - reduction);
-            if (tree.health && tree.health > effectiveMaxHealth) {
-              tree.health = effectiveMaxHealth;
-            }
-            tree.maxHealth = effectiveMaxHealth;
-          });
-        }
-
         // Add more trees if "more_trees" improvement was purchased
         if (improvementId === "more_trees") {
           const treesAdded = addTreesToMap(
@@ -173,7 +161,8 @@ const {
             mapHeight,
             tileSize,
             config.treeDensity,
-            "normal"
+            config.strongTreesEnabled,
+            config.ancientTreesEnabled
           );
           console.log(`Added ${treesAdded} new trees to the map`);
         }
@@ -235,7 +224,18 @@ setupMouseTreeDestruction(
         const tile = tiles[tileY]?.[tileX];
         // Only respawn if tile is still empty
         if (tile && tile.item === null) {
-          const tree = createTree("normal");
+          // Choose tree type based on enabled types (weighted random)
+          let treeType: TreeType = "normal";
+          const rand = Math.random();
+          if (config.ancientTreesEnabled && rand < 0.05) {
+            treeType = "ancient";
+          } else if (config.strongTreesEnabled && rand < 0.30) {
+            treeType = "strong";
+          } else {
+            treeType = "normal";
+          }
+          
+          const tree = createTree(treeType);
           const treeX = tileX * tileSize + tileSize / 2;
           const treeY = tileY * tileSize + tileSize / 2;
 
@@ -247,7 +247,7 @@ setupMouseTreeDestruction(
           // Update tile data
           tile.item = "tree";
           tile.tree = tree;
-          tile.treeType = "normal";
+          tile.treeType = treeType;
         }
       }, 2000); // 2 second delay
     }

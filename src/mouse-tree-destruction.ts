@@ -25,7 +25,6 @@ function hitTreeAtTile(
   mapHeight: number,
   tileSize: number,
   treesContainer: Container,
-  config?: PlayerConfig,
   onWoodCollected?: (count: number, worldX: number, worldY: number) => void,
   onTreeCut?: (tileX: number, tileY: number) => void
 ): void {
@@ -44,78 +43,53 @@ function hitTreeAtTile(
     return;
   }
 
-  const areaChop = config?.areaChopEnabled || false;
-  const configuredTreeMaxHealth = config?.treeMaxHealth ?? 3;
-  const healthReduction = Math.max(0, 3 - configuredTreeMaxHealth);
+  // Hit the tree at the target tile
+  const tile = tiles[tileY]?.[tileX];
+  if (tile && tile.item === "tree" && tile.tree) {
+    const targetTree = tile.tree;
 
-  // Determine which tiles to hit
-  const tilesToHit: Array<{ x: number; y: number }> = [];
+    const baseMaxHealth =
+      (targetTree as any).baseMaxHealth ?? (targetTree as any).maxHealth ?? 3;
+    const effectiveMaxHealth = baseMaxHealth;
 
-  if (areaChop) {
-    // Hit all trees in 3x3 area around clicked tile
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const x = tileX + dx;
-        const y = tileY + dy;
-        if (x >= 0 && x < mapWidth && y >= 0 && y < mapHeight) {
-          tilesToHit.push({ x, y });
-        }
+    // Ensure the tree's maxHealth reflects current config
+    (targetTree as any).maxHealth = effectiveMaxHealth;
+
+    // Get current health or use effective max health
+    const currentHealth = (targetTree as any).health ?? effectiveMaxHealth;
+    const newHealth = currentHealth - 1;
+
+    // Decrease tree health
+    (targetTree as any).health = newHealth;
+
+    // Shake the tree
+    shakeTree(targetTree);
+
+    // Check if tree health reached 0
+    if (newHealth <= 0) {
+      // Remove tree from container
+      treesContainer.removeChild(targetTree);
+
+      // Update tile data (no wood on ground, it's automatically collected)
+      tile.item = null;
+      tile.tree = undefined;
+
+      const woodDropCount = Math.max(1, (targetTree as any).woodDropCount ?? 3);
+      // Calculate tile center in world coordinates
+      const tileCenterX = tileX * tileSize + tileSize / 2;
+      const tileCenterY = tileY * tileSize + tileSize / 2;
+
+      // Notify that a tree was cut (for respawn system)
+      if (onTreeCut) {
+        onTreeCut(tileX, tileY);
+      }
+
+      // Automatically collect wood (trigger animation)
+      if (onWoodCollected) {
+        onWoodCollected(woodDropCount, tileCenterX, tileCenterY);
       }
     }
-  } else {
-    // Hit only the clicked tile
-    tilesToHit.push({ x: tileX, y: tileY });
   }
-
-  // Hit all trees in the target tiles
-  tilesToHit.forEach(({ x, y }) => {
-    const tile = tiles[y]?.[x];
-    if (tile && tile.item === "tree" && tile.tree) {
-      const targetTree = tile.tree;
-
-      const baseMaxHealth =
-        (targetTree as any).baseMaxHealth ?? (targetTree as any).maxHealth ?? 3;
-      const effectiveMaxHealth = Math.max(1, baseMaxHealth - healthReduction);
-
-      // Ensure the tree's maxHealth reflects current config
-      (targetTree as any).maxHealth = effectiveMaxHealth;
-
-      // Get current health or use effective max health
-      const currentHealth = (targetTree as any).health ?? effectiveMaxHealth;
-      const newHealth = currentHealth - 1;
-
-      // Decrease tree health
-      (targetTree as any).health = newHealth;
-
-      // Shake the tree
-      shakeTree(targetTree);
-
-      // Check if tree health reached 0
-      if (newHealth <= 0) {
-        // Remove tree from container
-        treesContainer.removeChild(targetTree);
-
-        // Update tile data (no wood on ground, it's automatically collected)
-        tile.item = null;
-        tile.tree = undefined;
-
-        const woodDropCount = Math.max(1, (targetTree as any).woodDropCount ?? 3);
-        // Calculate tile center in world coordinates
-        const tileCenterX = x * tileSize + tileSize / 2;
-        const tileCenterY = y * tileSize + tileSize / 2;
-
-        // Notify that a tree was cut (for respawn system)
-        if (onTreeCut) {
-          onTreeCut(x, y);
-        }
-
-        // Automatically collect wood (trigger animation)
-        if (onWoodCollected) {
-          onWoodCollected(woodDropCount, tileCenterX, tileCenterY);
-        }
-      }
-    }
-  });
 }
 
 /**
@@ -257,8 +231,6 @@ export function setupMouseTreeDestruction(
           onAxeSwing();
         }
         
-        const currentConfig = getConfig ? getConfig() : undefined;
-        
         // Hit all trees within cursor radius
         treePositions.forEach((treePosition) => {
           hitTreeAtTile(
@@ -269,7 +241,6 @@ export function setupMouseTreeDestruction(
             mapHeight,
             tileSize,
             treesContainer,
-            currentConfig,
             onWoodCollected || undefined,
             onTreeCut
           );
@@ -318,8 +289,6 @@ export function setupMouseTreeDestruction(
             onAxeSwing();
           }
           
-          const currentConfig = getConfig ? getConfig() : undefined;
-          
           // Hit all trees within cursor radius
           validTreePositions.forEach((treePosition) => {
             hitTreeAtTile(
@@ -330,7 +299,6 @@ export function setupMouseTreeDestruction(
               mapHeight,
               tileSize,
               treesContainer,
-              currentConfig,
               onWoodCollected || undefined,
               onTreeCut
             );

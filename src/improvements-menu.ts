@@ -19,7 +19,6 @@ const CATEGORY_CONFIG: Partial<Record<
   ImprovementCategory,
   { color: string; name: string }
 >> = {
-  axe: { color: "#e74c3c", name: "Axe" },
   cursor: { color: "#f1c40f", name: "Cursor" },
   map: { color: "#2ecc71", name: "Map" },
 };

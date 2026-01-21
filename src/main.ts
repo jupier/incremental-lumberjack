@@ -4,6 +4,7 @@ import { Application, Container, extensions, CullerPlugin } from "pixi.js";
 extensions.add(CullerPlugin);
 import { createMap, addTreesToMap } from "./map";
 import { createWoodCounter } from "./wood-counter";
+import { createRoundTimer } from "./round-timer";
 import { createTree } from "./tree";
 import { createImprovementsMenu, Improvement } from "./improvements-menu";
 import { PlayerStateManager } from "./player-state";
@@ -87,6 +88,15 @@ const { container: woodCounter, updateCount: updateWoodCount } =
   createWoodCounter();
 app.stage.addChild(woodCounter);
 let globalWoodCount = 0;
+
+// Create round timer
+const { container: roundTimer, updateTime: updateRoundTimer } =
+  createRoundTimer();
+app.stage.addChild(roundTimer);
+
+// Round management
+let roundTimeRemaining = 30; // seconds
+let isRoundActive = false;
 
 // Create improvements menu - get all improvements from centralized file
 const improvements: Improvement[] = getAllImprovements();
@@ -172,7 +182,11 @@ const {
     }
   },
   (improvementId: string) => playerStateManager.hasImprovement(improvementId),
-  { container: cursorContainer }
+  { container: cursorContainer },
+  () => {
+    // Start new round when button is clicked
+    startRound();
+  }
 );
 
 // Setup mouse-based tree destruction
@@ -237,26 +251,25 @@ setupMouseTreeDestruction(
         }
       }, 2000); // 2 second delay
     }
-  }
+  },
+  () => isRoundActive // Pass function to check if round is active
 );
 
-// Handle Tab key to show/hide improvements menu (works anywhere)
-let improvementsMenuVisible = false;
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Tab") {
-    e.preventDefault();
-    if (improvementsMenuVisible) {
-      hideImprovementsMenu();
-      improvementsMenuVisible = false;
-    } else {
-      showImprovementsMenu();
-      improvementsMenuVisible = true;
-    }
-  } else if (e.key === "Escape" && improvementsMenuVisible) {
-    hideImprovementsMenu();
-    improvementsMenuVisible = false;
-  }
-});
+// Round management functions
+function startRound() {
+  isRoundActive = true;
+  roundTimeRemaining = 30;
+  updateRoundTimer(roundTimeRemaining);
+  hideImprovementsMenu();
+}
+
+function endRound() {
+  isRoundActive = false;
+  showImprovementsMenu();
+}
+
+// Start first round
+startRound();
 
 // Update tree shake animations
 app.ticker.add(() => {
@@ -288,4 +301,19 @@ app.ticker.add(() => {
       }
     }
   });
+});
+
+// Round timer countdown
+app.ticker.add(() => {
+  if (isRoundActive && roundTimeRemaining > 0) {
+    const deltaTime = app.ticker.deltaMS / 1000; // Convert to seconds
+    roundTimeRemaining -= deltaTime;
+    
+    if (roundTimeRemaining <= 0) {
+      roundTimeRemaining = 0;
+      endRound();
+    }
+    
+    updateRoundTimer(roundTimeRemaining);
+  }
 });

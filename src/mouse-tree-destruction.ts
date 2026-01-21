@@ -134,7 +134,8 @@ export function setupMouseTreeDestruction(
   onWoodCollected?: (count: number, worldX: number, worldY: number) => void,
   onAxeSwing?: () => void,
   getCursorRadius?: () => number,
-  onTreeCut?: (tileX: number, tileY: number) => void
+  onTreeCut?: (tileX: number, tileY: number) => void,
+  isRoundActive?: () => boolean
 ): void {
   let hitCooldown = 0;
   let hitCooldownDuration = 1.0;
@@ -225,6 +226,10 @@ export function setupMouseTreeDestruction(
 
   // Handle mouse down on the canvas
   app.canvas.addEventListener("mousedown", (e: MouseEvent) => {
+    // Don't allow tree cutting if round is not active
+    if (isRoundActive && !isRoundActive()) {
+      return;
+    }
     isMouseDown = true;
     
     // Get mouse position relative to canvas
@@ -292,6 +297,10 @@ export function setupMouseTreeDestruction(
 
   // Continuous hitting while mouse is held down (respects cooldown)
   app.ticker.add(() => {
+    // Don't allow tree cutting if round is not active
+    if (isRoundActive && !isRoundActive()) {
+      return;
+    }
     if (isMouseDown && canHit) {
       // Find all trees within cursor radius at current mouse position
       const treePositions = findTreesAtWorldPosition(currentMouseWorldX, currentMouseWorldY);

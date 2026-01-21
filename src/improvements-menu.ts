@@ -50,7 +50,8 @@ export function createImprovementsMenu(
   improvements: Improvement[],
   onPurchase: (improvementId: string) => void,
   hasImprovement?: (improvementId: string) => boolean,
-  cursorContainer?: { container: any; hide?: () => void; show?: () => void }
+  cursorContainer?: { container: any; hide?: () => void; show?: () => void },
+  onStartRound?: () => void
 ): {
   show: () => void;
   hide: () => void;
@@ -130,6 +131,39 @@ export function createImprovementsMenu(
     position: relative;
   `;
   modalContent.appendChild(treeContainer);
+
+  // Create Start Round button (only show if onStartRound callback is provided)
+  let startRoundBtn: HTMLButtonElement | null = null;
+  if (onStartRound) {
+    startRoundBtn = document.createElement("button");
+    startRoundBtn.textContent = "Start Round";
+    startRoundBtn.style.cssText = `
+      display: block;
+      margin: 20px auto 0;
+      padding: 15px 40px;
+      background-color: #4169e1;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    `;
+    startRoundBtn.onmouseenter = () => {
+      if (startRoundBtn) startRoundBtn.style.backgroundColor = "#5a7ff0";
+    };
+    startRoundBtn.onmouseleave = () => {
+      if (startRoundBtn) startRoundBtn.style.backgroundColor = "#4169e1";
+    };
+    startRoundBtn.onclick = () => {
+      if (onStartRound) {
+        onStartRound();
+        hide();
+      }
+    };
+    modalContent.appendChild(startRoundBtn);
+  }
 
   modal.appendChild(modalContent);
   document.body.appendChild(modal);

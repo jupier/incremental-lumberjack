@@ -1,4 +1,4 @@
-import { Application, Container, extensions, CullerPlugin } from "pixi.js";
+import { Application, Container, extensions, CullerPlugin, Graphics } from "pixi.js";
 
 // Register CullerPlugin for performance optimization (only render visible objects)
 extensions.add(CullerPlugin);
@@ -219,17 +219,19 @@ setupMouseTreeDestruction(
     // Handle tree respawn when a tree is cut
     const config = playerStateManager.getConfig();
     if (config.treeRespawnEnabled) {
-      // Respawn tree after a delay (2 seconds)
+      // Respawn tree after delay (based on improvement level)
       setTimeout(() => {
         const tile = tiles[tileY]?.[tileX];
-        // Only respawn if tile is still empty
-        if (tile && tile.item === null) {
+        // Only respawn if tile is still empty and round is still active
+        if (tile && tile.item === null && isRoundActive) {
+          // Get current config again (in case it changed)
+          const currentConfig = playerStateManager.getConfig();
           // Choose tree type based on enabled types (weighted random)
           let treeType: TreeType = "normal";
           const rand = Math.random();
-          if (config.ancientTreesEnabled && rand < 0.05) {
+          if (currentConfig.ancientTreesEnabled && rand < 0.05) {
             treeType = "ancient";
-          } else if (config.strongTreesEnabled && rand < 0.30) {
+          } else if (currentConfig.strongTreesEnabled && rand < 0.30) {
             treeType = "strong";
           } else {
             treeType = "normal";
@@ -249,7 +251,7 @@ setupMouseTreeDestruction(
           tile.tree = tree;
           tile.treeType = treeType;
         }
-      }, 2000); // 2 second delay
+      }, config.treeRespawnDelay * 1000); // Convert seconds to milliseconds
     }
   },
   () => isRoundActive // Pass function to check if round is active
@@ -261,6 +263,35 @@ function startRound() {
   roundTimeRemaining = 30;
   updateRoundTimer(roundTimeRemaining);
   hideImprovementsMenu();
+  
+  // Reset map and trees
+  // Clear all existing trees
+  treesContainer.removeChildren();
+  
+  // Reset all tiles
+  for (let y = 0; y < mapHeight; y++) {
+    for (let x = 0; x < mapWidth; x++) {
+      const tile = tiles[y]?.[x];
+      if (tile) {
+        tile.item = null;
+        tile.tree = undefined;
+        tile.treeType = undefined;
+      }
+    }
+  }
+  
+  // Regenerate trees with current config
+  const config = playerStateManager.getConfig();
+  addTreesToMap(
+    tiles,
+    treesContainer,
+    mapWidth,
+    mapHeight,
+    tileSize,
+    config.treeDensity,
+    config.strongTreesEnabled,
+    config.ancientTreesEnabled
+  );
 }
 
 function endRound() {
@@ -315,5 +346,235 @@ app.ticker.add(() => {
     }
     
     updateRoundTimer(roundTimeRemaining);
+  }
+});
+
+// Flashlight system - hits random trees on the map
+let flashlightTimer = 0;
+
+// Create flashlight indicator (progress ring around cursor)
+const flashlightIndicator = new Graphics();
+flashlightIndicator.visible = false;
+cursorContainer.addChild(flashlightIndicator);
+
+// Function to update flashlight indicator
+function updateFlashlightIndicator(progress: number, isEnabled: boolean): void {
+  if (!isEnabled) {
+    flashlightIndicator.visible = false;
+    return;
+  }
+  
+  flashlightIndicator.visible = true;
+  flashlightIndicator.clear();
+  
+  // Draw progress ring around cursor (slightly larger than cursor radius)
+  const config = playerStateManager.getConfig();
+  const indicatorRadius = config.cursorRadius + 8; // 8 pixels outside cursor
+  const strokeWidth = 3;
+  
+  if (progress >= 1 || progress <= 0) {
+    // Ready state - yellow/orange circle border
+    flashlightIndicator.circle(0, 0, indicatorRadius);
+    flashlightIndicator.stroke({ width: strokeWidth, color: 0xffff00 });
+  } else {
+    // Charging state - gray border that gradually becomes yellow
+    const startAngle = -Math.PI / 2; // Start at top
+    const totalAngle = Math.PI * 2;
+    const progressAngle = progress * totalAngle;
+    
+    // Draw full gray circle border (background)
+    flashlightIndicator.circle(0, 0, indicatorRadius);
+    flashlightIndicator.stroke({ width: strokeWidth, color: 0x666666 });
+    
+    // Draw yellow progress arc (from top, clockwise) that replaces gray
+    if (progress > 0) {
+      const endAngle = startAngle + progressAngle;
+      
+      // Draw the yellow arc
+      const startX = Math.cos(startAngle) * indicatorRadius;
+      const startY = Math.sin(startAngle) * indicatorRadius;
+      flashlightIndicator.moveTo(startX, startY);
+      flashlightIndicator.arc(0, 0, indicatorRadius, startAngle, endAngle);
+      flashlightIndicator.stroke({ width: strokeWidth, color: 0xffff00 });
+    }
+  }
+}
+
+app.ticker.add(() => {
+  if (!isRoundActive) {
+    flashlightTimer = 0;
+    updateFlashlightIndicator(0, false);
+    return;
+  }
+  
+  const config = playerStateManager.getConfig();
+  if (!config.flashlightEnabled) {
+    flashlightTimer = 0;
+    updateFlashlightIndicator(0, false);
+    return;
+  }
+  
+  const deltaTime = app.ticker.deltaMS / 1000; // Convert to seconds
+  flashlightTimer += deltaTime;
+  
+  // Update flashlight indicator progress
+  const progress = Math.min(1, flashlightTimer / config.flashlightInterval);
+  updateFlashlightIndicator(progress, true);
+  
+  if (flashlightTimer >= config.flashlightInterval) {
+    flashlightTimer = 0;
+    updateFlashlightIndicator(0, true); // Reset indicator
+    
+    // Find all trees on the entire map
+    const allTrees: Array<{ tileX: number; tileY: number }> = [];
+    
+    // Search entire map for trees
+    for (let y = 0; y < mapHeight; y++) {
+      for (let x = 0; x < mapWidth; x++) {
+        const tile = tiles[y]?.[x];
+        if (tile && tile.item === "tree" && tile.tree) {
+          allTrees.push({ tileX: x, tileY: y });
+        }
+      }
+    }
+    
+    // Shuffle and select random trees to hit
+    const treesToHit = allTrees
+      .sort(() => Math.random() - 0.5) // Shuffle
+      .slice(0, config.flashlightCount);
+    
+    // Hit the selected trees
+    treesToHit.forEach(({ tileX, tileY }) => {
+      // Create visual flash effect for flashlight hit
+      const flashTile = tiles[tileY]?.[tileX];
+      if (flashTile && flashTile.tree) {
+        const tree = flashTile.tree;
+        const treeWorldX = tree.x;
+        const treeWorldY = tree.y;
+        
+        // Create simple flash effect - just a bright circle at the tree
+        const flashEffect = new Graphics();
+        
+        // Draw a bright flash circle at tree position
+        flashEffect.circle(0, 0, 30);
+        flashEffect.fill({ color: 0xffffff, alpha: 0.9 });
+        flashEffect.circle(0, 0, 20);
+        flashEffect.fill({ color: 0xffff00, alpha: 0.8 });
+        
+        // Position Graphics at tree location in world space
+        flashEffect.x = treeWorldX;
+        flashEffect.y = treeWorldY;
+        flashEffect.alpha = 1;
+        
+        // Add to world container (above trees)
+        world.addChild(flashEffect);
+        
+        // Animate flash: fade out quickly
+        let flashTime = 0;
+        const flashDuration = 0.15; // 150ms flash
+        const flashTicker = () => {
+          flashTime += app.ticker.deltaMS / 1000;
+          const progress = flashTime / flashDuration;
+          
+          if (progress >= 1) {
+            // Remove flash effect
+            if (world.children.includes(flashEffect)) {
+              world.removeChild(flashEffect);
+            }
+            flashEffect.destroy();
+            app.ticker.remove(flashTicker);
+          } else {
+            // Fade out and scale up slightly
+            flashEffect.alpha = 1 - progress;
+            const scale = 1 + progress * 0.2;
+            flashEffect.scale.set(scale);
+          }
+        };
+        app.ticker.add(flashTicker);
+      }
+      
+      // Hit tree with flashlight power
+      const targetTile = tiles[tileY]?.[tileX];
+      if (targetTile && targetTile.item === "tree" && targetTile.tree) {
+        const targetTree = targetTile.tree;
+        const currentConfig = playerStateManager.getConfig();
+
+        const baseMaxHealth = (targetTree as any).baseMaxHealth ?? (targetTree as any).maxHealth ?? 3;
+        const effectiveMaxHealth = baseMaxHealth;
+        (targetTree as any).maxHealth = effectiveMaxHealth;
+
+        const currentHealth = (targetTree as any).health ?? effectiveMaxHealth;
+        // Use flashlight power instead of cursor hit damage
+        const hitDamage = currentConfig.flashlightPower ?? 1;
+        const newHealth = currentHealth - hitDamage;
+
+        (targetTree as any).health = newHealth;
+
+        // Shake the tree
+        if (!(targetTree as any).originalX) {
+          (targetTree as any).originalX = targetTree.x;
+          (targetTree as any).originalY = targetTree.y;
+        }
+        (targetTree as any).shakeTime = 0;
+        (targetTree as any).isShaking = true;
+
+        if (newHealth <= 0) {
+          treesContainer.removeChild(targetTree);
+          targetTile.item = null;
+          targetTile.tree = undefined;
+
+          const woodDropCount = Math.max(1, (targetTree as any).woodDropCount ?? 3);
+          const tileCenterX = tileX * tileSize + tileSize / 2;
+          const tileCenterY = tileY * tileSize + tileSize / 2;
+
+          // Animate wood collection
+          const targetScreenX = 85;
+          const targetScreenY = 35;
+          animateWoodCollection(
+            app,
+            world,
+            tileCenterX,
+            tileCenterY,
+            targetScreenX,
+            targetScreenY,
+            woodDropCount,
+            (collectedCount: number) => {
+              globalWoodCount += collectedCount;
+              updateWoodCount(globalWoodCount);
+            }
+          );
+
+          // Handle tree respawn
+          if (currentConfig.treeRespawnEnabled) {
+            setTimeout(() => {
+              const respawnTile = tiles[tileY]?.[tileX];
+              if (respawnTile && respawnTile.item === null && isRoundActive) {
+                const respawnConfig = playerStateManager.getConfig();
+                let treeType: TreeType = "normal";
+                const rand = Math.random();
+                if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
+                  treeType = "ancient";
+                } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
+                  treeType = "strong";
+                }
+                
+                const tree = createTree(treeType);
+                const treeX = tileX * tileSize + tileSize / 2;
+                const treeY = tileY * tileSize + tileSize / 2;
+
+                tree.x = treeX;
+                tree.y = treeY;
+                tree.cullable = true;
+                treesContainer.addChild(tree);
+
+                respawnTile.item = "tree";
+                respawnTile.tree = tree;
+                respawnTile.treeType = treeType;
+              }
+            }, currentConfig.treeRespawnDelay * 1000);
+          }
+        }
+      }
+    });
   }
 });

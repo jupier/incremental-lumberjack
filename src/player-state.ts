@@ -12,9 +12,16 @@ export interface PlayerConfig {
   axeCooldownDuration: number; // in seconds
   treeMaxHealth: number; // Maximum health of trees (default 3)
   cursorRadius: number; // Radius of the cursor/hit zone in pixels
+  cursorHitDamage: number; // Damage per hit (default 1)
   // Map
   treeDensity: number; // Probability of a tile having a tree (0-1)
   treeRespawnEnabled: boolean; // Whether trees respawn after being cut
+  treeRespawnDelay: number; // Delay in seconds before tree respawns
+  // Flashlight
+  flashlightEnabled: boolean; // Whether flashlight is active
+  flashlightInterval: number; // Interval between flashes in seconds
+  flashlightCount: number; // Number of trees hit per flash
+  flashlightPower: number; // Damage per flashlight hit
   // Tree types enabled
   strongTreesEnabled: boolean; // Whether strong trees can spawn
   ancientTreesEnabled: boolean; // Whether ancient trees can spawn
@@ -27,8 +34,14 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   axeCooldownDuration: 2.0, // 2 seconds - very slow to start
   treeMaxHealth: 3, // Trees have 3 health by default
   cursorRadius: 4, // Very small cursor radius to start (4 pixels)
+  cursorHitDamage: 1, // 1 damage per hit by default
   treeDensity: 0.05, // Very low tree density to start (5% of tiles)
   treeRespawnEnabled: false, // Trees don't respawn by default
+  treeRespawnDelay: 10.0, // 10 seconds delay by default (very slow)
+  flashlightEnabled: false, // Flashlight disabled by default
+  flashlightInterval: 5.0, // 5 seconds between flashes by default
+  flashlightCount: 1, // 1 tree per flash by default
+  flashlightPower: 1, // 1 damage per flashlight hit by default
   strongTreesEnabled: false, // Strong trees locked by default
   ancientTreesEnabled: false, // Ancient trees locked by default
 };
@@ -38,15 +51,14 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
  * Tracks purchased improvements and calculates current config
  */
 export class PlayerStateManager {
-  private config: PlayerConfig;
   private improvementLevels: Map<string, number> = new Map();
 
-  constructor(initialConfig: PlayerConfig = DEFAULT_PLAYER_CONFIG) {
-    this.config = { ...initialConfig };
+  constructor() {
+    // Initialize with default config
   }
 
   /**
-   * Purchase an improvement and apply its effect
+   * Purchase an improvement and increment its level
    */
   purchaseImprovement(improvementId: string): boolean {
     const data = getImprovementData(improvementId);
@@ -59,8 +71,7 @@ export class PlayerStateManager {
       return false; // Invalid improvement
     }
 
-    // Apply the improvement effect
-    this.config = effect(this.config);
+    // Increment level
     this.improvementLevels.set(improvementId, currentLevel + 1);
     return true;
   }
@@ -77,10 +88,59 @@ export class PlayerStateManager {
   }
 
   /**
-   * Get current player configuration
+   * Get current player configuration by recalculating from all improvement levels
    */
   getConfig(): Readonly<PlayerConfig> {
-    return { ...this.config };
+    // Start with default config
+    let config: PlayerConfig = { ...DEFAULT_PLAYER_CONFIG };
+    
+    // Apply all improvements based on their total levels
+    // We need to apply them in a specific order for dependencies
+    const improvementOrder = [
+      "stronger_hit",
+      "larger_cursor",
+      "faster_swing",
+      "more_trees",
+      "unlock_strong_trees",
+      "unlock_ancient_trees",
+      "tree_respawn",
+      "flashlight",
+      "flashlight_speed",
+      "flashlight_count",
+      "flashlight_power",
+    ];
+    
+    for (const improvementId of improvementOrder) {
+      const level = this.improvementLevels.get(improvementId) ?? 0;
+      if (level > 0) {
+        const effect = getImprovementEffect(improvementId);
+        if (effect) {
+          // For repeatable improvements, apply effect with total level
+          // For non-repeatable, just apply once
+          const data = getImprovementData(improvementId);
+          if (data?.repeatable) {
+            // Apply effect with total level (effect will handle incremental changes)
+            // For effects that need incremental application, we apply multiple times
+            // For effects that calculate from total level, we apply once with total level
+            const needsIncremental = ["larger_cursor", "faster_swing", "more_trees", "stronger_hit", "flashlight_speed", "flashlight_count", "flashlight_power"];
+            if (needsIncremental.includes(improvementId)) {
+              // Apply incrementally
+              for (let i = 1; i <= level; i++) {
+                config = effect(config, i);
+              }
+            } else {
+              // Apply once with total level
+              config = effect(config, level);
+            }
+          } else {
+            // Apply once
+            config = effect(config, 1);
+          }
+        }
+      }
+    }
+    
+    return config;
   }
 
 }

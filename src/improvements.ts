@@ -17,40 +17,82 @@ export type ImprovementCategory = "cursor" | "map";
  */
 export const IMPROVEMENT_EFFECTS: Record<
   string,
-  (config: PlayerConfig) => PlayerConfig
+  (config: PlayerConfig, level: number) => PlayerConfig
 > = {
   // Cursor radius improvement (repeatable)
-  larger_cursor: (config: PlayerConfig) => ({
+  larger_cursor: (config: PlayerConfig, _level: number) => ({
     ...config,
     cursorRadius: config.cursorRadius + 2, // +2 pixels per level
   }),
   
   // Speed improvements (repeatable, reduce cooldown)
-  faster_swing: (config: PlayerConfig) => ({
+  faster_swing: (config: PlayerConfig, _level: number) => ({
     ...config,
-    axeCooldownDuration: Math.max(0.1, config.axeCooldownDuration * 0.85), // 15% faster
+    axeCooldownDuration: Math.max(0.1, config.axeCooldownDuration * 0.85), // 15% faster per level
   }),
   
   // Tree density improvements (repeatable)
-  more_trees: (config: PlayerConfig) => ({
+  more_trees: (config: PlayerConfig, _level: number) => ({
     ...config,
-    treeDensity: Math.min(1.0, config.treeDensity + 0.05), // Increase by 5% (smaller increments)
+    treeDensity: Math.min(1.0, config.treeDensity + 0.05), // +5% per level
   }),
   
   // Tree type unlocks
-  unlock_strong_trees: (config: PlayerConfig) => ({
+  unlock_strong_trees: (config: PlayerConfig, _level: number) => ({
     ...config,
     strongTreesEnabled: true,
   }),
-  unlock_ancient_trees: (config: PlayerConfig) => ({
+  unlock_ancient_trees: (config: PlayerConfig, _level: number) => ({
     ...config,
     ancientTreesEnabled: true,
   }),
   
-  // Tree respawn
-  tree_respawn: (config: PlayerConfig) => ({
+  // Tree respawn (repeatable, leveled)
+  tree_respawn: (config: PlayerConfig, level: number) => {
+    // First level enables respawn, subsequent levels reduce delay
+    const baseDelay = 10.0; // Start with 10 seconds
+    // Each level reduces delay by 20% (minimum 0.5 seconds)
+    const delay = Math.max(0.5, baseDelay * Math.pow(0.8, level - 1));
+    return {
+      ...config,
+      treeRespawnEnabled: true,
+      treeRespawnDelay: delay,
+    };
+  },
+  
+  // Flashlight unlock (one-time)
+  flashlight: (config: PlayerConfig, _level: number) => ({
     ...config,
-    treeRespawnEnabled: true,
+    flashlightEnabled: true,
+  }),
+  
+  // Flashlight speed improvement (repeatable)
+  flashlight_speed: (config: PlayerConfig, _level: number) => {
+    const baseInterval = 5.0; // Base interval
+    // Each level reduces interval by 15% (minimum 0.5 seconds)
+    const currentInterval = config.flashlightInterval || baseInterval;
+    return {
+      ...config,
+      flashlightInterval: Math.max(0.5, currentInterval * 0.85),
+    };
+  },
+  
+  // Flashlight count improvement (repeatable)
+  flashlight_count: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    flashlightCount: config.flashlightCount + 1, // +1 tree per flash per level
+  }),
+  
+  // Flashlight power improvement (repeatable)
+  flashlight_power: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    flashlightPower: config.flashlightPower + 1, // +1 damage per level
+  }),
+  
+  // Cursor hit damage improvement (repeatable, leveled)
+  stronger_hit: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    cursorHitDamage: config.cursorHitDamage + 1, // +1 damage per level
   }),
 };
 
@@ -127,15 +169,79 @@ export const IMPROVEMENTS_DATA: Record<
     requires: "unlock_strong_trees",
   },
   
-  // Tree respawn
+  // Tree respawn (repeatable, leveled)
   tree_respawn: {
     id: "tree_respawn",
     name: "Tree Respawn",
-    description: "Trees automatically respawn after being cut",
+    description: "Trees automatically respawn after being cut (faster with each level)",
     baseCost: 30,
+    costScaling: 1.5,
+    repeatable: true,
     category: "map",
     tier: 2,
     requires: "more_trees",
+  },
+  
+  // Flashlight unlock (one-time)
+  flashlight: {
+    id: "flashlight",
+    name: "Flashlight",
+    description: "Unlocks flashlight that periodically hits random trees on the map",
+    baseCost: 40,
+    category: "cursor",
+    tier: 3,
+    requires: "faster_swing",
+  },
+  
+  // Flashlight speed improvement
+  flashlight_speed: {
+    id: "flashlight_speed",
+    name: "Flashlight Speed",
+    description: "Reduces flashlight interval by 15%",
+    baseCost: 15,
+    costScaling: 1.5,
+    repeatable: true,
+    category: "cursor",
+    tier: 4,
+    requires: "flashlight",
+  },
+  
+  // Flashlight count improvement
+  flashlight_count: {
+    id: "flashlight_count",
+    name: "Flashlight Count",
+    description: "Increases number of trees hit per flash by 1",
+    baseCost: 20,
+    costScaling: 1.6,
+    repeatable: true,
+    category: "cursor",
+    tier: 4,
+    requires: "flashlight",
+  },
+  
+  // Flashlight power improvement
+  flashlight_power: {
+    id: "flashlight_power",
+    name: "Flashlight Power",
+    description: "Increases flashlight damage by 1",
+    baseCost: 25,
+    costScaling: 1.5,
+    repeatable: true,
+    category: "cursor",
+    tier: 4,
+    requires: "flashlight",
+  },
+  
+  // Cursor hit damage improvement
+  stronger_hit: {
+    id: "stronger_hit",
+    name: "Stronger Hit",
+    description: "Increases damage per hit by 1",
+    baseCost: 8,
+    costScaling: 1.4,
+    repeatable: true,
+    category: "cursor",
+    tier: 1,
   },
 };
 
@@ -175,7 +281,7 @@ export function getAllImprovements(): Improvement[] {
  */
 export function getImprovementEffect(
   improvementId: string
-): ((config: PlayerConfig) => PlayerConfig) | undefined {
+): ((config: PlayerConfig, level: number) => PlayerConfig) | undefined {
   return IMPROVEMENT_EFFECTS[improvementId];
 }
 

@@ -17,7 +17,7 @@ function shakeTree(tree: Graphics): void {
 /**
  * Hit a tree at the specified tile coordinates
  */
-function hitTreeAtTile(
+export function hitTreeAtTile(
   tileX: number,
   tileY: number,
   tiles: TileData[][],
@@ -25,6 +25,7 @@ function hitTreeAtTile(
   mapHeight: number,
   tileSize: number,
   treesContainer: Container,
+  getConfig?: () => PlayerConfig,
   onWoodCollected?: (count: number, worldX: number, worldY: number) => void,
   onTreeCut?: (tileX: number, tileY: number) => void
 ): void {
@@ -47,6 +48,7 @@ function hitTreeAtTile(
   const tile = tiles[tileY]?.[tileX];
   if (tile && tile.item === "tree" && tile.tree) {
     const targetTree = tile.tree;
+    const config = getConfig ? getConfig() : undefined;
 
     const baseMaxHealth =
       (targetTree as any).baseMaxHealth ?? (targetTree as any).maxHealth ?? 3;
@@ -57,7 +59,9 @@ function hitTreeAtTile(
 
     // Get current health or use effective max health
     const currentHealth = (targetTree as any).health ?? effectiveMaxHealth;
-    const newHealth = currentHealth - 1;
+    // Use cursor hit damage from config (default 1 if not available)
+    const hitDamage = config?.cursorHitDamage ?? 1;
+    const newHealth = currentHealth - hitDamage;
 
     // Decrease tree health
     (targetTree as any).health = newHealth;
@@ -241,6 +245,7 @@ export function setupMouseTreeDestruction(
             mapHeight,
             tileSize,
             treesContainer,
+            getConfig,
             onWoodCollected || undefined,
             onTreeCut
           );
@@ -299,6 +304,7 @@ export function setupMouseTreeDestruction(
               mapHeight,
               tileSize,
               treesContainer,
+              getConfig,
               onWoodCollected || undefined,
               onTreeCut
             );

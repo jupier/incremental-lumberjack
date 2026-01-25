@@ -50,11 +50,13 @@ export function createImprovementsMenu(
   onPurchase: (improvementId: string) => void,
   hasImprovement?: (improvementId: string) => boolean,
   cursorContainer?: { container: any; hide?: () => void; show?: () => void },
-  onStartRound?: () => void
+  onStartRound?: () => void,
+  getWoodCount?: () => number
 ): {
   show: () => void;
   hide: () => void;
   update: (improvements: Improvement[]) => void;
+  updateWoodCount: (count: number) => void;
   destroy: () => void;
 } {
   // Create modal container
@@ -73,7 +75,7 @@ export function createImprovementsMenu(
     cursor: default !important;
   `;
 
-  // Create modal content
+  // Create modal content - allow it to expand and be scrollable
   const modalContent = document.createElement("div");
   modalContent.style.cssText = `
     position: relative;
@@ -82,36 +84,141 @@ export function createImprovementsMenu(
     padding: 20px;
     border: 3px solid #4169e1;
     border-radius: 8px;
-    max-width: 95%;
-    max-height: 90vh;
-    overflow: auto;
+    max-width: 98%;
+    min-width: 800px;
+    width: fit-content;
+    max-height: 95vh;
+    overflow-y: auto;
+    overflow-x: auto;
     color: white;
     font-family: Arial, sans-serif;
     cursor: default !important;
   `;
 
-  // Create title
+  // Create title with wood count
+  const titleContainer = document.createElement("div");
+  titleContainer.style.cssText = `
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0 0 20px 0;
+  `;
+  
   const title = document.createElement("h2");
   title.textContent = "Improvements";
   title.style.cssText = `
-    text-align: center;
-    margin: 0 0 20px 0;
+    margin: 0;
     color: white;
     font-size: 24px;
     font-weight: bold;
+    flex: 1;
+    text-align: center;
   `;
-  modalContent.appendChild(title);
+  titleContainer.appendChild(title);
+  
+  // Create wood count display
+  const woodCountDisplay = document.createElement("div");
+  woodCountDisplay.id = "improvements-wood-count";
+  woodCountDisplay.style.cssText = `
+    background-color: #2a4a2a;
+    border: 2px solid #4a8a4a;
+    border-radius: 8px;
+    padding: 10px 20px;
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    font-family: Arial, sans-serif;
+    min-width: 120px;
+    text-align: center;
+  `;
+  
+  const updateWoodCountDisplay = () => {
+    const woodCount = getWoodCount ? getWoodCount() : 0;
+    woodCountDisplay.textContent = `Wood: ${woodCount}`;
+  };
+  
+  updateWoodCountDisplay();
+  titleContainer.appendChild(woodCountDisplay);
+  modalContent.appendChild(titleContainer);
 
   // Close button removed - menu can only be closed via Start Round button
 
-  // Create tree container
+  // Create zoom controls (will be added after tree container)
+  const zoomControls = document.createElement("div");
+  zoomControls.id = "zoom-controls";
+  zoomControls.style.cssText = `
+    position: absolute;
+    top: 60px;
+    right: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10001;
+  `;
+  
+  const createZoomButton = (text: string, onClick: () => void) => {
+    const btn = document.createElement("button");
+    btn.textContent = text;
+    btn.style.cssText = `
+      padding: 8px 12px;
+      background-color: #4169e1;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+    `;
+    btn.onmouseenter = () => {
+      btn.style.backgroundColor = "#5a7ff0";
+    };
+    btn.onmouseleave = () => {
+      btn.style.backgroundColor = "#4169e1";
+    };
+    btn.onclick = onClick;
+    return btn;
+  };
+  
+  let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null;
+  let svgElement: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
+  let currentZoomTransform: d3.ZoomTransform = d3.zoomIdentity;
+  let savedScrollPosition = { top: 0, left: 0 };
+  
+  const zoomIn = () => {
+    if (zoomBehavior && svgElement) {
+      svgElement.transition().duration(200).call(zoomBehavior.scaleBy, 1.5);
+    }
+  };
+  
+  const zoomOut = () => {
+    if (zoomBehavior && svgElement) {
+      svgElement.transition().duration(200).call(zoomBehavior.scaleBy, 1 / 1.5);
+    }
+  };
+  
+  const resetZoom = () => {
+    if (zoomBehavior && svgElement) {
+      svgElement.transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+  };
+  
+  zoomControls.appendChild(createZoomButton("+", zoomIn));
+  zoomControls.appendChild(createZoomButton("−", zoomOut));
+  zoomControls.appendChild(createZoomButton("Reset", resetZoom));
+  
+  // Create tree container with scrolling
   const treeContainer = document.createElement("div");
   treeContainer.id = "improvements-tree";
   treeContainer.style.cssText = `
     min-height: 400px;
     position: relative;
+    overflow: auto;
+    width: 100%;
+    max-height: 70vh;
   `;
   modalContent.appendChild(treeContainer);
+  // Add zoom controls after tree container so they appear on top
+  modalContent.appendChild(zoomControls);
 
   // Create Start Round button (only show if onStartRound callback is provided)
   let startRoundBtn: HTMLButtonElement | null = null;
@@ -222,10 +329,32 @@ export function createImprovementsMenu(
     // Clear container
     container.innerHTML = "";
 
-    // Create SVG container
-    const margin = { top: 20, right: 90, bottom: 30, left: 90 };
-    const width = Math.max(800, container.clientWidth - margin.left - margin.right);
-    const height = Math.max(400, treeData.children?.length ? treeData.children.length * 100 : 400);
+    // Calculate tree dimensions based on number of nodes
+    const countNodes = (node: TreeNodeData): number => {
+      let count = 1;
+      if (node.children) {
+        node.children.forEach(child => {
+          count += countNodes(child);
+        });
+      }
+      return count;
+    };
+    
+    const nodeCount = countNodes(treeData);
+    const maxDepth = (node: TreeNodeData, depth = 0): number => {
+      if (!node.children || node.children.length === 0) return depth;
+      return Math.max(...node.children.map(child => maxDepth(child, depth + 1)));
+    };
+    const treeDepth = maxDepth(treeData);
+    
+    // Create SVG container with better sizing
+    const margin = { top: 40, right: 200, bottom: 40, left: 200 };
+    // Calculate width based on depth (horizontal spacing)
+    const nodeWidth = 250; // Horizontal spacing between levels
+    const width = Math.max(1200, treeDepth * nodeWidth);
+    // Calculate height based on nodes (vertical spacing)
+    const nodeHeight = 120; // Vertical spacing between nodes
+    const height = Math.max(600, nodeCount * nodeHeight);
 
     const svg = d3.select(container)
       .append("svg")
@@ -233,20 +362,47 @@ export function createImprovementsMenu(
       .attr("height", height + margin.top + margin.bottom)
       .style("background-color", "transparent");
 
+    // Create a container group for zoom/pan transformations
     const g = svg.append("g")
+      .attr("class", "zoom-container")
       .attr("transform", `translate(${margin.left},${margin.top})`);
+    
+    // Setup zoom behavior
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.3, 3]) // Allow zoom from 30% to 300%
+      .on("zoom", (event) => {
+        g.attr("transform", event.transform.toString() + ` translate(${margin.left},${margin.top})`);
+        currentZoomTransform = event.transform;
+      });
+    
+    // Store zoom behavior and SVG for button controls
+    zoomBehavior = zoom;
+    svgElement = svg;
+    
+    // Apply zoom to SVG and restore previous zoom state if available
+    svg.call(zoom);
+    if (currentZoomTransform !== d3.zoomIdentity) {
+      // Restore previous zoom/pan state
+      svg.call(zoom.transform, currentZoomTransform);
+    }
 
     // Build D3 hierarchy
     const root = d3.hierarchy(treeData, d => d.children);
     
-    // Create tree layout
+    // Create tree layout with better separation
     const treeLayout = d3.tree<TreeNodeData>()
-      .size([height, width - 200])
-      .separation((a, b) => (a.parent === b.parent ? 1 : 1.5) / a.depth);
+      .size([height, width])
+      .separation((a, b) => {
+        // Better separation to prevent overlap
+        if (a.parent === b.parent) {
+          return 1.2; // Siblings need more space
+        }
+        return 1.5; // Different parents
+      });
 
     treeLayout(root);
 
-    // Draw links (edges) with category-based colors
+    // Draw links (edges) FIRST so they appear behind nodes
     g.selectAll(".link")
       .data(root.links())
       .enter()
@@ -262,7 +418,8 @@ export function createImprovementsMenu(
         return category ? getCategoryConfig(category).color : "#4169e1";
       })
       .attr("stroke-width", 2)
-      .attr("opacity", 0.6);
+      .attr("opacity", 0.4)
+      .lower(); // Ensure links are behind nodes
 
     // Draw nodes
     const nodes = g.selectAll(".node")
@@ -327,33 +484,64 @@ export function createImprovementsMenu(
         }
       });
 
-    // Node labels
+    // Create background rectangles for text to ensure visibility
+    nodes.append("rect")
+      .attr("x", d => {
+        const data = d.data as TreeNodeData;
+        if (data.id === "root") return -60;
+        return d.children ? -80 : 40;
+      })
+      .attr("y", -15)
+      .attr("width", d => {
+        const data = d.data as TreeNodeData;
+        const nameLength = data.name.length;
+        return Math.max(120, nameLength * 7);
+      })
+      .attr("height", 35)
+      .attr("fill", "#1a1a1a")
+      .attr("fill-opacity", 0.9)
+      .attr("stroke", "none")
+      .lower(); // Behind text but above links
+    
+    // Node labels with better positioning
     nodes.append("text")
       .attr("dy", ".35em")
-      .attr("x", d => (d.children ? -35 : 35))
+      .attr("x", d => {
+        const data = d.data as TreeNodeData;
+        if (data.id === "root") return 0;
+        return d.children ? -45 : 45;
+      })
       .attr("text-anchor", d => (d.children ? "end" : "start"))
       .attr("fill", d => {
         const data = d.data as TreeNodeData;
         return data.locked ? "#666" : "white";
       })
-      .attr("font-size", "12px")
+      .attr("font-size", "13px")
       .attr("font-family", "Arial, sans-serif")
+      .attr("font-weight", "bold")
+      .attr("pointer-events", "none") // Allow clicks to pass through to circle
       .text(d => {
         const data = d.data as TreeNodeData;
         return data.name;
-      });
+      })
+      .raise(); // Ensure text is on top
 
     // Cost/Level info below node name
     nodes.append("text")
       .attr("dy", "1.5em")
-      .attr("x", d => (d.children ? -35 : 35))
+      .attr("x", d => {
+        const data = d.data as TreeNodeData;
+        if (data.id === "root") return 0;
+        return d.children ? -45 : 45;
+      })
       .attr("text-anchor", d => (d.children ? "end" : "start"))
       .attr("fill", d => {
         const data = d.data as TreeNodeData;
         return data.locked ? "#666" : "#aaa";
       })
-      .attr("font-size", "10px")
+      .attr("font-size", "11px")
       .attr("font-family", "Arial, sans-serif")
+      .attr("pointer-events", "none") // Allow clicks to pass through to circle
       .text(d => {
         const data = d.data as TreeNodeData;
         if (data.repeatable && data.level !== undefined) {
@@ -363,7 +551,8 @@ export function createImprovementsMenu(
         } else {
           return "✓";
         }
-      });
+      })
+      .raise(); // Ensure text is on top
 
     // Tooltips
     nodes.append("title")
@@ -375,20 +564,34 @@ export function createImprovementsMenu(
 
   // Build and render single unified tree
   function buildTree() {
+    // Save current scroll position before clearing
+    savedScrollPosition = {
+      top: treeContainer.scrollTop,
+      left: treeContainer.scrollLeft
+    };
+    
     treeContainer.innerHTML = "";
-
+    
     // Build single tree from all improvements
     const treeData = buildTreeData(improvements, hasImprovement);
     if (treeData) {
+      // Create a wrapper div that allows the SVG to expand beyond viewport
       const treeDiv = document.createElement("div");
-      treeDiv.style.cssText = "width: 100%; overflow: auto;";
+      treeDiv.style.cssText = "width: 100%; min-width: 100%; overflow: visible;";
       treeContainer.appendChild(treeDiv);
       renderTreeWithD3(treeData, treeDiv, onPurchase);
+      
+      // Restore scroll position after a brief delay to allow rendering
+      setTimeout(() => {
+        treeContainer.scrollTop = savedScrollPosition.top;
+        treeContainer.scrollLeft = savedScrollPosition.left;
+      }, 10);
     }
   }
 
   function show() {
     modal.style.display = "block";
+    updateWoodCountDisplay(); // Update wood count when menu is shown
     buildTree();
     
     // Hide custom cursor container if provided
@@ -436,6 +639,10 @@ export function createImprovementsMenu(
       buildTree();
     }
   }
+  
+  function updateWoodCount(count: number) {
+    woodCountDisplay.textContent = `Wood: ${count}`;
+  }
 
   function destroy() {
     if (document.body.contains(modal)) {
@@ -443,5 +650,5 @@ export function createImprovementsMenu(
     }
   }
 
-  return { show, hide, update, destroy };
+  return { show, hide, update, updateWoodCount, destroy };
 }

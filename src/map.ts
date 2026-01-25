@@ -22,6 +22,8 @@ export interface TileData {
   tree?: Graphics; // Reference to tree graphics if item is "tree"
   treeType?: TreeType;
   woodPieces?: Graphics[]; // Array of wood piece graphics if item is "wood"
+  hasBomb?: boolean; // Whether this tree has a bomb
+  bombIndicator?: Graphics; // Visual indicator for bomb
 }
 
 export function createMap(config: MapConfig): {

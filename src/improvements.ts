@@ -24,19 +24,19 @@ export const IMPROVEMENT_EFFECTS: Record<
     ...config,
     cursorRadius: config.cursorRadius + 2, // +2 pixels per level
   }),
-  
+
   // Speed improvements (repeatable, reduce cooldown)
   faster_swing: (config: PlayerConfig, _level: number) => ({
     ...config,
     axeCooldownDuration: Math.max(0.1, config.axeCooldownDuration * 0.85), // 15% faster per level
   }),
-  
-  // Tree density improvements (repeatable)
+
+  // Tree density improvements (repeatable, limited to 80%)
   more_trees: (config: PlayerConfig, _level: number) => ({
     ...config,
-    treeDensity: Math.min(1.0, config.treeDensity + 0.05), // +5% per level
+    treeDensity: Math.min(0.8, config.treeDensity + 0.05), // +5% per level, max 80%
   }),
-  
+
   // Tree type unlocks
   unlock_strong_trees: (config: PlayerConfig, _level: number) => ({
     ...config,
@@ -46,7 +46,7 @@ export const IMPROVEMENT_EFFECTS: Record<
     ...config,
     ancientTreesEnabled: true,
   }),
-  
+
   // New tree type unlocks
   unlock_magical_trees: (config: PlayerConfig, _level: number) => ({
     ...config,
@@ -60,13 +60,57 @@ export const IMPROVEMENT_EFFECTS: Record<
     ...config,
     legendaryTreesEnabled: true,
   }),
-  
+
   // Auto-click unlock
   auto_click: (config: PlayerConfig, _level: number) => ({
     ...config,
     autoClickEnabled: true,
   }),
-  
+
+  // Wood drop improvements for each tree type (repeatable, 10% per level, max 3x)
+  improve_normal_wood: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    normalWoodMultiplier: Math.min(3.0, config.normalWoodMultiplier + 0.1), // +10% per level, max 300%
+  }),
+  improve_strong_wood: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    strongWoodMultiplier: Math.min(3.0, config.strongWoodMultiplier + 0.1), // +10% per level, max 300%
+  }),
+  improve_ancient_wood: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    ancientWoodMultiplier: Math.min(3.0, config.ancientWoodMultiplier + 0.1), // +10% per level, max 300%
+  }),
+  improve_magical_wood: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    magicalWoodMultiplier: Math.min(3.0, config.magicalWoodMultiplier + 0.1), // +10% per level, max 300%
+  }),
+  improve_crystal_wood: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    crystalWoodMultiplier: Math.min(3.0, config.crystalWoodMultiplier + 0.1), // +10% per level, max 300%
+  }),
+  improve_legendary_wood: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    legendaryWoodMultiplier: Math.min(3.0, config.legendaryWoodMultiplier + 0.1), // +10% per level, max 300%
+  }),
+
+  // Tree bomb improvements
+  tree_bomb: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    treeBombEnabled: true,
+  }),
+  tree_bomb_chance: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    treeBombChance: Math.min(0.5, config.treeBombChance + 0.02), // +2% per level, max 50%
+  }),
+  tree_bomb_radius: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    treeBombRadius: config.treeBombRadius + 1, // +1 tile radius per level
+  }),
+  tree_bomb_power: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    treeBombDamage: config.treeBombDamage + 1, // +1 damage per level
+  }),
+
   // Tree respawn (repeatable, leveled)
   tree_respawn: (config: PlayerConfig, level: number) => {
     // First level enables respawn, subsequent levels reduce delay
@@ -79,13 +123,13 @@ export const IMPROVEMENT_EFFECTS: Record<
       treeRespawnDelay: delay,
     };
   },
-  
+
   // Flashlight unlock (one-time)
   flashlight: (config: PlayerConfig, _level: number) => ({
     ...config,
     flashlightEnabled: true,
   }),
-  
+
   // Flashlight speed improvement (repeatable)
   flashlight_speed: (config: PlayerConfig, _level: number) => {
     const baseInterval = 5.0; // Base interval
@@ -96,19 +140,19 @@ export const IMPROVEMENT_EFFECTS: Record<
       flashlightInterval: Math.max(0.5, currentInterval * 0.85),
     };
   },
-  
+
   // Flashlight count improvement (repeatable)
   flashlight_count: (config: PlayerConfig, _level: number) => ({
     ...config,
     flashlightCount: config.flashlightCount + 1, // +1 tree per flash per level
   }),
-  
+
   // Flashlight power improvement (repeatable)
   flashlight_power: (config: PlayerConfig, _level: number) => ({
     ...config,
     flashlightPower: config.flashlightPower + 1, // +1 damage per level
   }),
-  
+
   // Cursor hit damage improvement (repeatable, leveled)
   stronger_hit: (config: PlayerConfig, _level: number) => ({
     ...config,
@@ -144,7 +188,19 @@ export const IMPROVEMENTS_DATA: Record<
     category: "cursor",
     tier: 1,
   },
-  
+
+  // Cursor hit damage improvement
+  stronger_hit: {
+    id: "stronger_hit",
+    name: "Stronger Hit",
+    description: "Increases damage per hit by 1",
+    baseCost: 8,
+    costScaling: 1.4,
+    repeatable: true,
+    category: "cursor",
+    tier: 1,
+  },
+
   // Speed improvements
   faster_swing: {
     id: "faster_swing",
@@ -156,7 +212,7 @@ export const IMPROVEMENTS_DATA: Record<
     category: "cursor",
     tier: 2,
   },
-  
+
   // Tree density improvements
   more_trees: {
     id: "more_trees",
@@ -168,7 +224,7 @@ export const IMPROVEMENTS_DATA: Record<
     category: "map",
     tier: 1,
   },
-  
+
   // Tree type unlocks
   unlock_strong_trees: {
     id: "unlock_strong_trees",
@@ -215,7 +271,7 @@ export const IMPROVEMENTS_DATA: Record<
     tier: 7,
     requires: "unlock_crystal_trees",
   },
-  
+
   // Auto-click unlock
   auto_click: {
     id: "auto_click",
@@ -226,7 +282,119 @@ export const IMPROVEMENTS_DATA: Record<
     tier: 5,
     requires: "flashlight",
   },
-  
+
+  // Wood drop improvements for each tree type
+  improve_normal_wood: {
+    id: "improve_normal_wood",
+    name: "Normal Wood+",
+    description: "Increases normal tree wood drops by 10%",
+    baseCost: 10,
+    costScaling: 1.3,
+    repeatable: true,
+    category: "map",
+    tier: 2,
+    requires: "more_trees",
+  },
+  improve_strong_wood: {
+    id: "improve_strong_wood",
+    name: "Strong Wood+",
+    description: "Increases strong tree wood drops by 10%",
+    baseCost: 30,
+    costScaling: 1.4,
+    repeatable: true,
+    category: "map",
+    tier: 4,
+    requires: "unlock_strong_trees",
+  },
+  improve_ancient_wood: {
+    id: "improve_ancient_wood",
+    name: "Ancient Wood+",
+    description: "Increases ancient tree wood drops by 10%",
+    baseCost: 60,
+    costScaling: 1.5,
+    repeatable: true,
+    category: "map",
+    tier: 5,
+    requires: "unlock_ancient_trees",
+  },
+  improve_magical_wood: {
+    id: "improve_magical_wood",
+    name: "Magical Wood+",
+    description: "Increases magical tree wood drops by 10%",
+    baseCost: 120,
+    costScaling: 1.5,
+    repeatable: true,
+    category: "map",
+    tier: 6,
+    requires: "unlock_magical_trees",
+  },
+  improve_crystal_wood: {
+    id: "improve_crystal_wood",
+    name: "Crystal Wood+",
+    description: "Increases crystal tree wood drops by 10%",
+    baseCost: 250,
+    costScaling: 1.6,
+    repeatable: true,
+    category: "map",
+    tier: 7,
+    requires: "unlock_crystal_trees",
+  },
+  improve_legendary_wood: {
+    id: "improve_legendary_wood",
+    name: "Legendary Wood+",
+    description: "Increases legendary tree wood drops by 10%",
+    baseCost: 600,
+    costScaling: 1.6,
+    repeatable: true,
+    category: "map",
+    tier: 8,
+    requires: "unlock_legendary_trees",
+  },
+
+  // Tree bomb improvements
+  tree_bomb: {
+    id: "tree_bomb",
+    name: "Tree Bomb",
+    description: "Unlocks tree bombs (trees can randomly explode when destroyed)",
+    baseCost: 150,
+    category: "map",
+    tier: 5,
+    requires: "tree_respawn",
+  },
+  tree_bomb_chance: {
+    id: "tree_bomb_chance",
+    name: "Bomb Chance",
+    description: "Increases tree bomb chance by 2%",
+    baseCost: 50,
+    costScaling: 1.4,
+    repeatable: true,
+    category: "map",
+    tier: 6,
+    requires: "tree_bomb",
+  },
+  tree_bomb_radius: {
+    id: "tree_bomb_radius",
+    name: "Bomb Radius",
+    description: "Increases bomb explosion radius by 1 tile",
+    baseCost: 75,
+    costScaling: 1.5,
+    repeatable: true,
+    category: "map",
+    tier: 6,
+    requires: "tree_bomb",
+  },
+  tree_bomb_power: {
+    id: "tree_bomb_power",
+    name: "Bomb Power",
+    description: "Increases bomb damage by 1",
+    baseCost: 100,
+    costScaling: 1.4,
+    repeatable: true,
+    category: "map",
+    tier: 6,
+    requires: "tree_bomb",
+  },
+
   // Tree respawn (repeatable, leveled)
   tree_respawn: {
     id: "tree_respawn",
@@ -239,7 +407,7 @@ export const IMPROVEMENTS_DATA: Record<
     tier: 2,
     requires: "more_trees",
   },
-  
+
   // Flashlight unlock (one-time)
   flashlight: {
     id: "flashlight",
@@ -250,7 +418,7 @@ export const IMPROVEMENTS_DATA: Record<
     tier: 3,
     requires: "faster_swing",
   },
-  
+
   // Flashlight speed improvement
   flashlight_speed: {
     id: "flashlight_speed",
@@ -263,7 +431,7 @@ export const IMPROVEMENTS_DATA: Record<
     tier: 4,
     requires: "flashlight",
   },
-  
+
   // Flashlight count improvement
   flashlight_count: {
     id: "flashlight_count",
@@ -276,7 +444,7 @@ export const IMPROVEMENTS_DATA: Record<
     tier: 4,
     requires: "flashlight",
   },
-  
+
   // Flashlight power improvement
   flashlight_power: {
     id: "flashlight_power",
@@ -288,18 +456,6 @@ export const IMPROVEMENTS_DATA: Record<
     category: "cursor",
     tier: 4,
     requires: "flashlight",
-  },
-  
-  // Cursor hit damage improvement
-  stronger_hit: {
-    id: "stronger_hit",
-    name: "Stronger Hit",
-    description: "Increases damage per hit by 1",
-    baseCost: 8,
-    costScaling: 1.4,
-    repeatable: true,
-    category: "cursor",
-    tier: 1,
   },
 };
 

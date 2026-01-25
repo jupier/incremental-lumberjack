@@ -30,6 +30,18 @@ export interface PlayerConfig {
   legendaryTreesEnabled: boolean; // Whether legendary trees can spawn
   // Auto-click
   autoClickEnabled: boolean; // Whether auto-click is active
+  // Wood drop multipliers (per tree type)
+  normalWoodMultiplier: number; // Multiplier for normal tree wood drops
+  strongWoodMultiplier: number; // Multiplier for strong tree wood drops
+  ancientWoodMultiplier: number; // Multiplier for ancient tree wood drops
+  magicalWoodMultiplier: number; // Multiplier for magical tree wood drops
+  crystalWoodMultiplier: number; // Multiplier for crystal tree wood drops
+  legendaryWoodMultiplier: number; // Multiplier for legendary tree wood drops
+  // Tree bomb
+  treeBombEnabled: boolean; // Whether tree bombs are enabled
+  treeBombChance: number; // Chance for a tree to have a bomb (0-1)
+  treeBombRadius: number; // Radius of bomb explosion in tiles
+  treeBombDamage: number; // Damage dealt by bomb explosion
 }
 
 /**
@@ -40,7 +52,7 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   treeMaxHealth: 3, // Trees have 3 health by default
   cursorRadius: 4, // Very small cursor radius to start (4 pixels)
   cursorHitDamage: 1, // 1 damage per hit by default
-  treeDensity: 0.05, // Very low tree density to start (5% of tiles)
+  treeDensity: 0.05, // Very low tree density to start (5% of tiles), max 0.8 (80%)
   treeRespawnEnabled: false, // Trees don't respawn by default
   treeRespawnDelay: 10.0, // 10 seconds delay by default (very slow)
   flashlightEnabled: false, // Flashlight disabled by default
@@ -53,6 +65,18 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   crystalTreesEnabled: false, // Crystal trees locked by default
   legendaryTreesEnabled: false, // Legendary trees locked by default
   autoClickEnabled: false, // Auto-click disabled by default
+  // Wood drop multipliers (start at 1.0 = 100% of base)
+  normalWoodMultiplier: 1.0,
+  strongWoodMultiplier: 1.0,
+  ancientWoodMultiplier: 1.0,
+  magicalWoodMultiplier: 1.0,
+  crystalWoodMultiplier: 1.0,
+  legendaryWoodMultiplier: 1.0,
+  // Tree bomb
+  treeBombEnabled: false, // Tree bombs disabled by default
+  treeBombChance: 0.01, // 1% chance by default
+  treeBombRadius: 1, // 1 tile radius (3x3 area)
+  treeBombDamage: 1, // 1 damage per explosion
 };
 
 /**
@@ -121,6 +145,16 @@ export class PlayerStateManager {
       "flashlight_count",
       "flashlight_power",
       "auto_click",
+      "improve_normal_wood",
+      "improve_strong_wood",
+      "improve_ancient_wood",
+      "improve_magical_wood",
+      "improve_crystal_wood",
+      "improve_legendary_wood",
+      "tree_bomb",
+      "tree_bomb_chance",
+      "tree_bomb_radius",
+      "tree_bomb_power",
     ];
     
     for (const improvementId of improvementOrder) {
@@ -135,7 +169,7 @@ export class PlayerStateManager {
             // Apply effect with total level (effect will handle incremental changes)
             // For effects that need incremental application, we apply multiple times
             // For effects that calculate from total level, we apply once with total level
-            const needsIncremental = ["larger_cursor", "faster_swing", "more_trees", "stronger_hit", "flashlight_speed", "flashlight_count", "flashlight_power"];
+            const needsIncremental = ["larger_cursor", "faster_swing", "more_trees", "stronger_hit", "flashlight_speed", "flashlight_count", "flashlight_power", "improve_normal_wood", "improve_strong_wood", "improve_ancient_wood", "improve_magical_wood", "improve_crystal_wood", "improve_legendary_wood", "tree_bomb_chance", "tree_bomb_radius", "tree_bomb_power"];
             if (needsIncremental.includes(improvementId)) {
               // Apply incrementally
               for (let i = 1; i <= level; i++) {

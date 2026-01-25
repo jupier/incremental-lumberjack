@@ -93,22 +93,32 @@ export const IMPROVEMENT_EFFECTS: Record<
     legendaryWoodMultiplier: Math.min(3.0, config.legendaryWoodMultiplier + 0.1), // +10% per level, max 300%
   }),
 
-  // Tree bomb improvements
-  tree_bomb: (config: PlayerConfig, _level: number) => ({
+  // Horizontal line weapon improvements
+  horizontal_line_weapon: (config: PlayerConfig, _level: number) => ({
     ...config,
-    treeBombEnabled: true,
+    horizontalLineWeaponEnabled: true,
   }),
-  tree_bomb_chance: (config: PlayerConfig, _level: number) => ({
+  horizontal_line_weapon_speed: (config: PlayerConfig, _level: number) => ({
     ...config,
-    treeBombChance: Math.min(0.5, config.treeBombChance + 0.02), // +2% per level, max 50%
+    horizontalLineWeaponInterval: config.horizontalLineWeaponInterval * 0.85, // 15% faster per level
   }),
-  tree_bomb_radius: (config: PlayerConfig, _level: number) => ({
+  horizontal_line_weapon_power: (config: PlayerConfig, _level: number) => ({
     ...config,
-    treeBombRadius: config.treeBombRadius + 1, // +1 tile radius per level
+    horizontalLineWeaponPower: config.horizontalLineWeaponPower + 1, // +1 damage per level
   }),
-  tree_bomb_power: (config: PlayerConfig, _level: number) => ({
+
+  // Vertical line weapon improvements
+  vertical_line_weapon: (config: PlayerConfig, _level: number) => ({
     ...config,
-    treeBombDamage: config.treeBombDamage + 1, // +1 damage per level
+    verticalLineWeaponEnabled: true,
+  }),
+  vertical_line_weapon_speed: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    verticalLineWeaponInterval: config.verticalLineWeaponInterval * 0.85, // 15% faster per level
+  }),
+  vertical_line_weapon_power: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    verticalLineWeaponPower: config.verticalLineWeaponPower + 1, // +1 damage per level
   }),
 
   // Tree respawn (repeatable, leveled)
@@ -351,48 +361,70 @@ export const IMPROVEMENTS_DATA: Record<
     requires: "unlock_legendary_trees",
   },
 
-  // Tree bomb improvements
-  tree_bomb: {
-    id: "tree_bomb",
-    name: "Tree Bomb",
-    description: "Unlocks tree bombs (trees can randomly explode when destroyed)",
+  // Horizontal line weapon improvements
+  horizontal_line_weapon: {
+    id: "horizontal_line_weapon",
+    name: "Horizontal Line Weapon",
+    description: "Unlocks weapon that hits all trees on a random horizontal line",
     baseCost: 150,
-    category: "map",
+    category: "cursor",
     tier: 5,
-    requires: "tree_respawn",
+    requires: "flashlight",
   },
-  tree_bomb_chance: {
-    id: "tree_bomb_chance",
-    name: "Bomb Chance",
-    description: "Increases tree bomb chance by 2%",
-    baseCost: 50,
-    costScaling: 1.4,
-    repeatable: true,
-    category: "map",
-    tier: 6,
-    requires: "tree_bomb",
-  },
-  tree_bomb_radius: {
-    id: "tree_bomb_radius",
-    name: "Bomb Radius",
-    description: "Increases bomb explosion radius by 1 tile",
-    baseCost: 75,
+  horizontal_line_weapon_speed: {
+    id: "horizontal_line_weapon_speed",
+    name: "Horizontal Line Speed",
+    description: "Reduces horizontal line weapon interval by 15%",
+    baseCost: 30,
     costScaling: 1.5,
     repeatable: true,
-    category: "map",
+    category: "cursor",
     tier: 6,
-    requires: "tree_bomb",
+    requires: "horizontal_line_weapon",
   },
-  tree_bomb_power: {
-    id: "tree_bomb_power",
-    name: "Bomb Power",
-    description: "Increases bomb damage by 1",
-    baseCost: 100,
+  horizontal_line_weapon_power: {
+    id: "horizontal_line_weapon_power",
+    name: "Horizontal Line Power",
+    description: "Increases horizontal line weapon damage by 1",
+    baseCost: 40,
     costScaling: 1.4,
     repeatable: true,
-    category: "map",
+    category: "cursor",
     tier: 6,
-    requires: "tree_bomb",
+    requires: "horizontal_line_weapon",
+  },
+
+  // Vertical line weapon improvements
+  vertical_line_weapon: {
+    id: "vertical_line_weapon",
+    name: "Vertical Line Weapon",
+    description: "Unlocks weapon that hits all trees on a random vertical line",
+    baseCost: 150,
+    category: "cursor",
+    tier: 5,
+    requires: "horizontal_line_weapon",
+  },
+  vertical_line_weapon_speed: {
+    id: "vertical_line_weapon_speed",
+    name: "Vertical Line Speed",
+    description: "Reduces vertical line weapon interval by 15%",
+    baseCost: 30,
+    costScaling: 1.5,
+    repeatable: true,
+    category: "cursor",
+    tier: 6,
+    requires: "vertical_line_weapon",
+  },
+  vertical_line_weapon_power: {
+    id: "vertical_line_weapon_power",
+    name: "Vertical Line Power",
+    description: "Increases vertical line weapon damage by 1",
+    baseCost: 40,
+    costScaling: 1.4,
+    repeatable: true,
+    category: "cursor",
+    tier: 6,
+    requires: "vertical_line_weapon",
   },
 
   // Tree respawn (repeatable, leveled)

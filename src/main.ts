@@ -9,7 +9,7 @@ import { createTree, TreeType } from "./tree";
 import { createImprovementsMenu, Improvement } from "./improvements-menu";
 import { PlayerStateManager } from "./player-state";
 import { getAllImprovements, getImprovementNextCost } from "./improvements";
-import { setupMouseTreeDestruction, createTreeDestructionAnimation, hitTreeAtTile, createBombExplosionAnimation } from "./mouse-tree-destruction";
+import { setupMouseTreeDestruction, createTreeDestructionAnimation, hitTreeAtTile } from "./mouse-tree-destruction";
 import { animateWoodCollection } from "./wood-animation";
 import { setupAxeCursor } from "./axe-cursor";
 
@@ -262,15 +262,6 @@ const mouseDestructionState = setupMouseTreeDestruction(
           tree.cullable = true;
           treesContainer.addChild(tree);
 
-          // Check if tree should have a bomb
-          const respawnConfig = playerStateManager.getConfig();
-          if (respawnConfig.treeBombEnabled) {
-            const hasBomb = Math.random() < (respawnConfig.treeBombChance ?? 0.01);
-            if (hasBomb) {
-              addBombIndicator(tree, world);
-              tile.hasBomb = true;
-            }
-          }
 
           // Update tile data
           tile.item = "tree";
@@ -283,74 +274,6 @@ const mouseDestructionState = setupMouseTreeDestruction(
   () => isRoundActive // Pass function to check if round is active
 );
 
-// Function to add bomb indicator to a tree
-function addBombIndicator(tree: Graphics, world: Container): Graphics {
-  // Remove existing bomb indicator if any
-  if ((tree as any).bombIndicator) {
-    world.removeChild((tree as any).bombIndicator);
-    (tree as any).bombIndicator.destroy();
-  }
-  if ((tree as any).bombZone) {
-    world.removeChild((tree as any).bombZone);
-    (tree as any).bombZone.destroy();
-  }
-  
-  const config = playerStateManager.getConfig();
-  const bombRadius = config.treeBombRadius ?? 1;
-  const zoneRadius = bombRadius * tileSize;
-  
-  // Create bomb zone indicator (circle showing explosion radius)
-  const bombZone = new Graphics();
-  bombZone.circle(0, 0, zoneRadius);
-  bombZone.stroke({ width: 2, color: 0xff0000, alpha: 0.6 });
-  bombZone.circle(0, 0, zoneRadius);
-  bombZone.fill({ color: 0xff0000, alpha: 0.15 }); // Semi-transparent red fill
-  
-  // Position at tree center
-  bombZone.x = tree.x;
-  bombZone.y = tree.y;
-  bombZone.cullable = true;
-  world.addChild(bombZone);
-  
-  // Create bomb icon indicator
-  const bombIndicator = new Graphics();
-  // Draw a red circle with warning symbol
-  bombIndicator.circle(0, 0, 12);
-  bombIndicator.fill(0xff0000);
-  bombIndicator.circle(0, 0, 10);
-  bombIndicator.stroke({ width: 2, color: 0xffff00 });
-  // Add exclamation mark
-  bombIndicator.rect(-2, -6, 4, 8);
-  bombIndicator.fill(0xffffff);
-  bombIndicator.circle(0, 4, 2);
-  bombIndicator.fill(0xffffff);
-  
-  // Position at top of tree
-  bombIndicator.x = tree.x;
-  bombIndicator.y = tree.y - 35; // Above tree
-  bombIndicator.cullable = true;
-  world.addChild(bombIndicator);
-  
-  // Store references
-  (tree as any).bombIndicator = bombIndicator;
-  (tree as any).bombZone = bombZone;
-  
-  // Add pulsing animation to both
-  let pulseTime = 0;
-  const pulseTicker = () => {
-    pulseTime += app.ticker.deltaMS / 1000;
-    const pulse = Math.sin(pulseTime * 3) * 0.3 + 0.7; // Pulse between 0.4 and 1.0
-    bombIndicator.alpha = pulse;
-    bombIndicator.scale.set(0.8 + pulse * 0.2);
-    // Zone pulses more subtly
-    bombZone.alpha = 0.3 + pulse * 0.2; // Between 0.3 and 0.5
-  };
-  app.ticker.add(pulseTicker);
-  (bombIndicator as any).pulseTicker = pulseTicker;
-  (bombZone as any).pulseTicker = pulseTicker;
-  
-  return bombIndicator;
-}
 
 // Round management functions
 function startRound() {
@@ -391,21 +314,6 @@ function startRound() {
     config.legendaryTreesEnabled
   );
   
-  // Add bomb indicators to trees that should have bombs
-  if (config.treeBombEnabled) {
-    for (let y = 0; y < mapHeight; y++) {
-      for (let x = 0; x < mapWidth; x++) {
-        const tile = tiles[y]?.[x];
-        if (tile && tile.item === "tree" && tile.tree) {
-          const hasBomb = Math.random() < (config.treeBombChance ?? 0.01);
-          if (hasBomb) {
-            addBombIndicator(tile.tree, world);
-            tile.hasBomb = true;
-          }
-        }
-      }
-    }
-  }
 }
 
 function endRound() {
@@ -619,317 +527,619 @@ app.ticker.add(() => {
       const targetTile = tiles[tileY]?.[tileX];
       if (targetTile && targetTile.item === "tree" && targetTile.tree) {
         const targetTree = targetTile.tree;
-        const currentConfig = playerStateManager.getConfig();
+        
+        // Check if tree is already being destroyed
+        if (!((targetTree as any).isDestroyed || (targetTree as any).health <= 0)) {
+          const currentConfig = playerStateManager.getConfig();
 
-        const baseMaxHealth = (targetTree as any).baseMaxHealth ?? (targetTree as any).maxHealth ?? 3;
-        const effectiveMaxHealth = baseMaxHealth;
-        (targetTree as any).maxHealth = effectiveMaxHealth;
+          const baseMaxHealth = (targetTree as any).baseMaxHealth ?? (targetTree as any).maxHealth ?? 3;
+          const effectiveMaxHealth = baseMaxHealth;
+          (targetTree as any).maxHealth = effectiveMaxHealth;
 
-        const currentHealth = (targetTree as any).health ?? effectiveMaxHealth;
-        // Use flashlight power instead of cursor hit damage
-        const hitDamage = currentConfig.flashlightPower ?? 1;
-        const newHealth = currentHealth - hitDamage;
+          const currentHealth = (targetTree as any).health ?? effectiveMaxHealth;
+          // Use flashlight power instead of cursor hit damage
+          const hitDamage = currentConfig.flashlightPower ?? 1;
+          const newHealth = currentHealth - hitDamage;
 
-        (targetTree as any).health = newHealth;
+          (targetTree as any).health = newHealth;
 
-        // Shake the tree
-        if (!(targetTree as any).originalX) {
-          (targetTree as any).originalX = targetTree.x;
-          (targetTree as any).originalY = targetTree.y;
-        }
-        (targetTree as any).shakeTime = 0;
-        (targetTree as any).isShaking = true;
-
-        if (newHealth <= 0) {
-          const treeType = (targetTree as any).treeType as TreeType || "normal";
-          const baseWoodDrop = (targetTree as any).woodDropCount ?? 3;
-          
-          // Apply wood multiplier based on tree type
-          let multiplier = 1.0;
-          switch (treeType) {
-            case "normal":
-              multiplier = currentConfig.normalWoodMultiplier ?? 1.0;
-              break;
-            case "strong":
-              multiplier = currentConfig.strongWoodMultiplier ?? 1.0;
-              break;
-            case "ancient":
-              multiplier = currentConfig.ancientWoodMultiplier ?? 1.0;
-              break;
-            case "magical":
-              multiplier = currentConfig.magicalWoodMultiplier ?? 1.0;
-              break;
-            case "crystal":
-              multiplier = currentConfig.crystalWoodMultiplier ?? 1.0;
-              break;
-            case "legendary":
-              multiplier = currentConfig.legendaryWoodMultiplier ?? 1.0;
-              break;
+          // Shake the tree
+          if (!(targetTree as any).originalX) {
+            (targetTree as any).originalX = targetTree.x;
+            (targetTree as any).originalY = targetTree.y;
           }
-          
-          const woodDropCount = Math.max(1, Math.round(baseWoodDrop * multiplier));
-          
-          // Check if tree has a bomb (from tile data or random chance)
-          const hasBomb = targetTile.hasBomb || 
-            (currentConfig.treeBombEnabled && Math.random() < (currentConfig.treeBombChance ?? 0.01));
-          const tileCenterX = tileX * tileSize + tileSize / 2;
-          const tileCenterY = tileY * tileSize + tileSize / 2;
-          
-          // Remove bomb indicator and zone if present
-          if (targetTile.hasBomb) {
-            if ((targetTree as any).bombIndicator) {
-              const bombIndicator = (targetTree as any).bombIndicator;
-              if (world.children.includes(bombIndicator)) {
-                world.removeChild(bombIndicator);
-              }
-              if ((bombIndicator as any).pulseTicker) {
-                app.ticker.remove((bombIndicator as any).pulseTicker);
-              }
-              bombIndicator.destroy();
+          (targetTree as any).shakeTime = 0;
+          (targetTree as any).isShaking = true;
+
+          if (newHealth <= 0) {
+            // Mark tree as destroyed immediately to prevent multiple hits
+            (targetTree as any).isDestroyed = true;
+            (targetTree as any).health = 0;
+            
+            // Update tile data immediately to prevent further hits
+            targetTile.item = null;
+            
+            const treeType = (targetTree as any).treeType as TreeType || "normal";
+            const baseWoodDrop = (targetTree as any).woodDropCount ?? 3;
+            
+            // Apply wood multiplier based on tree type
+            let multiplier = 1.0;
+            switch (treeType) {
+              case "normal":
+                multiplier = currentConfig.normalWoodMultiplier ?? 1.0;
+                break;
+              case "strong":
+                multiplier = currentConfig.strongWoodMultiplier ?? 1.0;
+                break;
+              case "ancient":
+                multiplier = currentConfig.ancientWoodMultiplier ?? 1.0;
+                break;
+              case "magical":
+                multiplier = currentConfig.magicalWoodMultiplier ?? 1.0;
+                break;
+              case "crystal":
+                multiplier = currentConfig.crystalWoodMultiplier ?? 1.0;
+                break;
+              case "legendary":
+                multiplier = currentConfig.legendaryWoodMultiplier ?? 1.0;
+                break;
             }
-            if ((targetTree as any).bombZone) {
-              const bombZone = (targetTree as any).bombZone;
-              if (world.children.includes(bombZone)) {
-                world.removeChild(bombZone);
-              }
-              if ((bombZone as any).pulseTicker) {
-                app.ticker.remove((bombZone as any).pulseTicker);
-              }
-              bombZone.destroy();
-            }
-            targetTile.hasBomb = false;
-            targetTile.bombIndicator = undefined;
-          }
+            
+            const woodDropCount = Math.max(1, Math.round(baseWoodDrop * multiplier));
+            const tileCenterX = tileX * tileSize + tileSize / 2;
+            const tileCenterY = tileY * tileSize + tileSize / 2;
 
-          // Hide tree immediately (before destruction animation)
-          targetTree.visible = false;
+            // Hide tree immediately (before destruction animation)
+            targetTree.visible = false;
 
-          // Create destruction animation
-          createTreeDestructionAnimation(
-            targetTree,
-            treeType,
-            world,
-            app,
-            () => {
-              // After animation completes, remove tree and update tile
-              if (treesContainer.children.includes(targetTree)) {
-                treesContainer.removeChild(targetTree);
-              }
-              targetTree.destroy();
+            // Create destruction animation
+            createTreeDestructionAnimation(
+              targetTree,
+              treeType,
+              world,
+              app,
+              () => {
+                // After animation completes, remove tree and update tile
+                if (treesContainer.children.includes(targetTree)) {
+                  treesContainer.removeChild(targetTree);
+                }
+                targetTree.destroy();
 
-              // Update tile data
-              targetTile.item = null;
-              targetTile.tree = undefined;
+                // Update tile data (item was already set to null, just clear tree reference)
+                targetTile.tree = undefined;
 
-              // Handle bomb explosion if tree had a bomb
-              if (hasBomb) {
-                const bombRadius = currentConfig.treeBombRadius ?? 1;
-                const bombDamage = currentConfig.treeBombDamage ?? 1;
-                
-                // Create explosion animation
-                createBombExplosionAnimation(
+                // Animate wood collection
+                const targetScreenX = 85;
+                const targetScreenY = 35;
+                animateWoodCollection(
+                  app,
+                  world,
                   tileCenterX,
                   tileCenterY,
-                  bombRadius * tileSize,
-                  world,
-                  app
+                  targetScreenX,
+                  targetScreenY,
+                  woodDropCount,
+                  (collectedCount: number) => {
+                    globalWoodCount += collectedCount;
+                    updateWoodCount(globalWoodCount);
+                  }
                 );
-                
-                // Hit all trees within bomb radius
-                for (let dy = -bombRadius; dy <= bombRadius; dy++) {
-                  for (let dx = -bombRadius; dx <= bombRadius; dx++) {
-                    const bombTileX = tileX + dx;
-                    const bombTileY = tileY + dy;
-                    
-                    // Skip the center tile (already destroyed)
-                    if (dx === 0 && dy === 0) continue;
-                    
-                    // Check bounds
-                    if (bombTileX < 0 || bombTileX >= mapWidth || 
-                        bombTileY < 0 || bombTileY >= mapHeight) {
-                      continue;
-                    }
-                    
-                    const bombTile = tiles[bombTileY]?.[bombTileX];
-                    if (bombTile && bombTile.item === "tree" && bombTile.tree) {
-                      // Hit the tree with bomb damage
-                      const bombTree = bombTile.tree;
-                      const currentHealth = (bombTree as any).health ?? (bombTree as any).maxHealth ?? 3;
-                      const newHealth = currentHealth - bombDamage;
-                      
-                      (bombTree as any).health = newHealth;
-                      
-                      // Shake the tree
-                      if (!(bombTree as any).originalX) {
-                        (bombTree as any).originalX = bombTree.x;
-                        (bombTree as any).originalY = bombTree.y;
-                      }
-                      (bombTree as any).shakeTime = 0;
-                      (bombTree as any).isShaking = true;
-                      
-                      // If tree is destroyed by bomb, handle it
-                      if (newHealth <= 0) {
-                        const bombTreeType = (bombTree as any).treeType as TreeType || "normal";
-                        const bombBaseWood = (bombTree as any).woodDropCount ?? 3;
-                        
-                        // Apply multiplier
-                        let bombMultiplier = 1.0;
-                        switch (bombTreeType) {
-                          case "normal":
-                            bombMultiplier = currentConfig.normalWoodMultiplier ?? 1.0;
-                            break;
-                          case "strong":
-                            bombMultiplier = currentConfig.strongWoodMultiplier ?? 1.0;
-                            break;
-                          case "ancient":
-                            bombMultiplier = currentConfig.ancientWoodMultiplier ?? 1.0;
-                            break;
-                          case "magical":
-                            bombMultiplier = currentConfig.magicalWoodMultiplier ?? 1.0;
-                            break;
-                          case "crystal":
-                            bombMultiplier = currentConfig.crystalWoodMultiplier ?? 1.0;
-                            break;
-                          case "legendary":
-                            bombMultiplier = currentConfig.legendaryWoodMultiplier ?? 1.0;
-                            break;
-                        }
-                        
-                        const bombWoodCount = Math.max(1, Math.round(bombBaseWood * bombMultiplier));
-                        const bombTileCenterX = bombTileX * tileSize + tileSize / 2;
-                        const bombTileCenterY = bombTileY * tileSize + tileSize / 2;
-                        
-                        bombTree.visible = false;
-                        
-                        createTreeDestructionAnimation(
-                          bombTree,
-                          bombTreeType,
-                          world,
-                          app,
-                          () => {
-                            if (treesContainer.children.includes(bombTree)) {
-                              treesContainer.removeChild(bombTree);
-                            }
-                            bombTree.destroy();
-                            
-                            bombTile.item = null;
-                            bombTile.tree = undefined;
-                            
-                            // Animate wood collection
-                            animateWoodCollection(
-                              app,
-                              world,
-                              bombTileCenterX,
-                              bombTileCenterY,
-                              85,
-                              35,
-                              bombWoodCount,
-                              (collectedCount: number) => {
-                                globalWoodCount += collectedCount;
-                                updateWoodCount(globalWoodCount);
-                              }
-                            );
-                            
-                            // Handle respawn
-                            if (currentConfig.treeRespawnEnabled) {
-                              setTimeout(() => {
-                                const respawnTile = tiles[bombTileY]?.[bombTileX];
-                                if (respawnTile && respawnTile.item === null && isRoundActive) {
-                                  const respawnConfig = playerStateManager.getConfig();
-                                  let respawnTreeType: TreeType = "normal";
-                                  const rand = Math.random();
-                                  if (respawnConfig.legendaryTreesEnabled && rand < 0.01) {
-                                    respawnTreeType = "legendary";
-                                  } else if (respawnConfig.crystalTreesEnabled && rand < 0.02) {
-                                    respawnTreeType = "crystal";
-                                  } else if (respawnConfig.magicalTreesEnabled && rand < 0.03) {
-                                    respawnTreeType = "magical";
-                                  } else if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
-                                    respawnTreeType = "ancient";
-                                  } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
-                                    respawnTreeType = "strong";
-                                  }
-                                  
-                                  const respawnTree = createTree(respawnTreeType);
-                                  const respawnTreeX = bombTileX * tileSize + tileSize / 2;
-                                  const respawnTreeY = bombTileY * tileSize + tileSize / 2;
 
-                                  respawnTree.x = respawnTreeX;
-                                  respawnTree.y = respawnTreeY;
-                                  respawnTree.cullable = true;
-                                  treesContainer.addChild(respawnTree);
-
-                                  respawnTile.item = "tree";
-                                  respawnTile.tree = respawnTree;
-                                  respawnTile.treeType = respawnTreeType;
-                                }
-                              }, currentConfig.treeRespawnDelay * 1000);
-                            }
-                          }
-                        );
+                // Handle tree respawn
+                if (currentConfig.treeRespawnEnabled) {
+                  setTimeout(() => {
+                    const respawnTile = tiles[tileY]?.[tileX];
+                    if (respawnTile && respawnTile.item === null && isRoundActive) {
+                      const respawnConfig = playerStateManager.getConfig();
+                      let treeType: TreeType = "normal";
+                      const rand = Math.random();
+                      if (respawnConfig.legendaryTreesEnabled && rand < 0.01) {
+                        treeType = "legendary";
+                      } else if (respawnConfig.crystalTreesEnabled && rand < 0.02) {
+                        treeType = "crystal";
+                      } else if (respawnConfig.magicalTreesEnabled && rand < 0.03) {
+                        treeType = "magical";
+                      } else if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
+                        treeType = "ancient";
+                      } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
+                        treeType = "strong";
                       }
+                      
+                      const tree = createTree(treeType);
+                      const treeX = tileX * tileSize + tileSize / 2;
+                      const treeY = tileY * tileSize + tileSize / 2;
+
+                      tree.x = treeX;
+                      tree.y = treeY;
+                      tree.cullable = true;
+                      treesContainer.addChild(tree);
+
+                      respawnTile.item = "tree";
+                      respawnTile.tree = tree;
+                      respawnTile.treeType = treeType;
                     }
-                  }
+                  }, currentConfig.treeRespawnDelay * 1000);
                 }
               }
-
-              // Animate wood collection
-              const targetScreenX = 85;
-              const targetScreenY = 35;
-              animateWoodCollection(
-                app,
-                world,
-                tileCenterX,
-                tileCenterY,
-                targetScreenX,
-                targetScreenY,
-                woodDropCount,
-                (collectedCount: number) => {
-                  globalWoodCount += collectedCount;
-                  updateWoodCount(globalWoodCount);
-                }
-              );
-
-              // Handle tree respawn
-              if (currentConfig.treeRespawnEnabled) {
-                setTimeout(() => {
-                  const respawnTile = tiles[tileY]?.[tileX];
-                  if (respawnTile && respawnTile.item === null && isRoundActive) {
-                    const respawnConfig = playerStateManager.getConfig();
-                    let treeType: TreeType = "normal";
-                    const rand = Math.random();
-                    if (respawnConfig.legendaryTreesEnabled && rand < 0.01) {
-                      treeType = "legendary";
-                    } else if (respawnConfig.crystalTreesEnabled && rand < 0.02) {
-                      treeType = "crystal";
-                    } else if (respawnConfig.magicalTreesEnabled && rand < 0.03) {
-                      treeType = "magical";
-                    } else if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
-                      treeType = "ancient";
-                    } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
-                      treeType = "strong";
-                    }
-                    
-                    const tree = createTree(treeType);
-                    const treeX = tileX * tileSize + tileSize / 2;
-                    const treeY = tileY * tileSize + tileSize / 2;
-
-                    tree.x = treeX;
-                    tree.y = treeY;
-                    tree.cullable = true;
-                    treesContainer.addChild(tree);
-
-                    respawnTile.item = "tree";
-                    respawnTile.tree = tree;
-                    respawnTile.treeType = treeType;
-                  }
-                }, currentConfig.treeRespawnDelay * 1000);
-              }
-            }
-          );
+            );
+          }
         }
       }
     });
+  }
+});
+
+// Horizontal line weapon system
+let horizontalLineTimer = 0;
+const horizontalLineIndicator = new Graphics();
+horizontalLineIndicator.visible = false;
+cursorContainer.addChild(horizontalLineIndicator);
+
+function updateHorizontalLineIndicator(progress: number, isEnabled: boolean): void {
+  if (!isEnabled) {
+    horizontalLineIndicator.visible = false;
+    return;
+  }
+  
+  horizontalLineIndicator.visible = true;
+  horizontalLineIndicator.clear();
+  
+  const config = playerStateManager.getConfig();
+  const indicatorRadius = config.cursorRadius + 12; // Slightly larger than flashlight
+  const strokeWidth = 3;
+  
+  if (progress >= 1 || progress <= 0) {
+    horizontalLineIndicator.circle(0, 0, indicatorRadius);
+    horizontalLineIndicator.stroke({ width: strokeWidth, color: 0xff8800 });
+  } else {
+    const startAngle = -Math.PI / 2;
+    const totalAngle = Math.PI * 2;
+    const progressAngle = progress * totalAngle;
+    
+    horizontalLineIndicator.circle(0, 0, indicatorRadius);
+    horizontalLineIndicator.stroke({ width: strokeWidth, color: 0x666666 });
+    
+    if (progress > 0) {
+      const endAngle = startAngle + progressAngle;
+      const startX = Math.cos(startAngle) * indicatorRadius;
+      const startY = Math.sin(startAngle) * indicatorRadius;
+      horizontalLineIndicator.moveTo(startX, startY);
+      horizontalLineIndicator.arc(0, 0, indicatorRadius, startAngle, endAngle);
+      horizontalLineIndicator.stroke({ width: strokeWidth, color: 0xff8800 });
+    }
+  }
+}
+
+// Vertical line weapon system
+let verticalLineTimer = 0;
+const verticalLineIndicator = new Graphics();
+verticalLineIndicator.visible = false;
+cursorContainer.addChild(verticalLineIndicator);
+
+function updateVerticalLineIndicator(progress: number, isEnabled: boolean): void {
+  if (!isEnabled) {
+    verticalLineIndicator.visible = false;
+    return;
+  }
+  
+  verticalLineIndicator.visible = true;
+  verticalLineIndicator.clear();
+  
+  const config = playerStateManager.getConfig();
+  const indicatorRadius = config.cursorRadius + 16; // Even larger than horizontal
+  const strokeWidth = 3;
+  
+  if (progress >= 1 || progress <= 0) {
+    verticalLineIndicator.circle(0, 0, indicatorRadius);
+    verticalLineIndicator.stroke({ width: strokeWidth, color: 0x00ff88 });
+  } else {
+    const startAngle = -Math.PI / 2;
+    const totalAngle = Math.PI * 2;
+    const progressAngle = progress * totalAngle;
+    
+    verticalLineIndicator.circle(0, 0, indicatorRadius);
+    verticalLineIndicator.stroke({ width: strokeWidth, color: 0x666666 });
+    
+    if (progress > 0) {
+      const endAngle = startAngle + progressAngle;
+      const startX = Math.cos(startAngle) * indicatorRadius;
+      const startY = Math.sin(startAngle) * indicatorRadius;
+      verticalLineIndicator.moveTo(startX, startY);
+      verticalLineIndicator.arc(0, 0, indicatorRadius, startAngle, endAngle);
+      verticalLineIndicator.stroke({ width: strokeWidth, color: 0x00ff88 });
+    }
+  }
+}
+
+// Function to create line attack animation
+function createLineAttackAnimation(
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  world: Container,
+  app: Application,
+  color: number
+): void {
+  const lineEffect = new Graphics();
+  
+  // Draw a bright line
+  lineEffect.moveTo(startX, startY);
+  lineEffect.lineTo(endX, endY);
+  lineEffect.stroke({ width: 8, color: color, alpha: 0.9 });
+  
+  // Add glow effect
+  lineEffect.moveTo(startX, startY);
+  lineEffect.lineTo(endX, endY);
+  lineEffect.stroke({ width: 16, color: color, alpha: 0.3 });
+  
+  world.addChild(lineEffect);
+  
+  // Animate line: fade out quickly
+  let animationTime = 0;
+  const animationDuration = 0.2; // 200ms
+  
+  const ticker = () => {
+    animationTime += app.ticker.deltaMS / 1000;
+    const progress = animationTime / animationDuration;
+    
+    if (progress >= 1) {
+      if (world.children.includes(lineEffect)) {
+        world.removeChild(lineEffect);
+      }
+      lineEffect.destroy();
+      app.ticker.remove(ticker);
+    } else {
+      lineEffect.alpha = 1 - progress;
+    }
+  };
+  
+  app.ticker.add(ticker);
+}
+
+// Horizontal line weapon ticker
+app.ticker.add(() => {
+  if (!isRoundActive) {
+    horizontalLineTimer = 0;
+    updateHorizontalLineIndicator(0, false);
+    return;
+  }
+  
+  const config = playerStateManager.getConfig();
+  if (!config.horizontalLineWeaponEnabled) {
+    horizontalLineTimer = 0;
+    updateHorizontalLineIndicator(0, false);
+    return;
+  }
+  
+  const deltaTime = app.ticker.deltaMS / 1000;
+  horizontalLineTimer += deltaTime;
+  
+  const progress = Math.min(1, horizontalLineTimer / config.horizontalLineWeaponInterval);
+  updateHorizontalLineIndicator(progress, true);
+  
+  if (horizontalLineTimer >= config.horizontalLineWeaponInterval) {
+    horizontalLineTimer = 0;
+    updateHorizontalLineIndicator(0, true);
+    
+    // Choose a random horizontal line (row)
+    const randomRow = Math.floor(Math.random() * mapHeight);
+    
+    // Create line animation
+    const startX = 0;
+    const startY = randomRow * tileSize + tileSize / 2;
+    const endX = mapWidth * tileSize;
+    const endY = startY;
+    createLineAttackAnimation(startX, startY, endX, endY, world, app, 0xff8800);
+    
+    // Hit all trees on this horizontal line
+    for (let x = 0; x < mapWidth; x++) {
+      const tile = tiles[randomRow]?.[x];
+      if (tile && tile.item === "tree" && tile.tree) {
+        const tree = tile.tree;
+        
+        // Check if tree is already destroyed
+        if (!((tree as any).isDestroyed || (tree as any).health <= 0)) {
+          const baseMaxHealth = (tree as any).baseMaxHealth ?? (tree as any).maxHealth ?? 3;
+          const effectiveMaxHealth = baseMaxHealth;
+          (tree as any).maxHealth = effectiveMaxHealth;
+          
+          const currentHealth = (tree as any).health ?? effectiveMaxHealth;
+          const hitDamage = config.horizontalLineWeaponPower ?? 1;
+          const newHealth = currentHealth - hitDamage;
+          
+          (tree as any).health = newHealth;
+          
+          // Shake the tree
+          if (!(tree as any).originalX) {
+            (tree as any).originalX = tree.x;
+            (tree as any).originalY = tree.y;
+          }
+          (tree as any).shakeTime = 0;
+          (tree as any).isShaking = true;
+          
+          if (newHealth <= 0) {
+            // Mark tree as destroyed immediately
+            (tree as any).isDestroyed = true;
+            (tree as any).health = 0;
+            
+            // Update tile data immediately
+            tile.item = null;
+            
+            const treeType = (tree as any).treeType as TreeType || "normal";
+            const baseWoodDrop = (tree as any).woodDropCount ?? 3;
+            
+            // Apply wood multiplier
+            let multiplier = 1.0;
+            switch (treeType) {
+              case "normal":
+                multiplier = config.normalWoodMultiplier ?? 1.0;
+                break;
+              case "strong":
+                multiplier = config.strongWoodMultiplier ?? 1.0;
+                break;
+              case "ancient":
+                multiplier = config.ancientWoodMultiplier ?? 1.0;
+                break;
+              case "magical":
+                multiplier = config.magicalWoodMultiplier ?? 1.0;
+                break;
+              case "crystal":
+                multiplier = config.crystalWoodMultiplier ?? 1.0;
+                break;
+              case "legendary":
+                multiplier = config.legendaryWoodMultiplier ?? 1.0;
+                break;
+            }
+            
+            const woodDropCount = Math.max(1, Math.round(baseWoodDrop * multiplier));
+            const tileCenterX = x * tileSize + tileSize / 2;
+            const tileCenterY = randomRow * tileSize + tileSize / 2;
+            
+            // Hide tree immediately
+            tree.visible = false;
+            
+            // Create destruction animation
+            createTreeDestructionAnimation(
+              tree,
+              treeType,
+              world,
+              app,
+              () => {
+                if (treesContainer.children.includes(tree)) {
+                  treesContainer.removeChild(tree);
+                }
+                tree.destroy();
+                tile.tree = undefined;
+                
+                // Animate wood collection
+                animateWoodCollection(
+                  app,
+                  world,
+                  tileCenterX,
+                  tileCenterY,
+                  85,
+                  35,
+                  woodDropCount,
+                  (collectedCount: number) => {
+                    globalWoodCount += collectedCount;
+                    updateWoodCount(globalWoodCount);
+                    updateMenuWoodCount(globalWoodCount);
+                  }
+                );
+                
+                // Handle tree respawn
+                if (config.treeRespawnEnabled) {
+                  setTimeout(() => {
+                    const respawnTile = tiles[randomRow]?.[x];
+                    if (respawnTile && respawnTile.item === null && isRoundActive) {
+                      const respawnConfig = playerStateManager.getConfig();
+                      let respawnTreeType: TreeType = "normal";
+                      const rand = Math.random();
+                      if (respawnConfig.legendaryTreesEnabled && rand < 0.01) {
+                        respawnTreeType = "legendary";
+                      } else if (respawnConfig.crystalTreesEnabled && rand < 0.02) {
+                        respawnTreeType = "crystal";
+                      } else if (respawnConfig.magicalTreesEnabled && rand < 0.03) {
+                        respawnTreeType = "magical";
+                      } else if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
+                        respawnTreeType = "ancient";
+                      } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
+                        respawnTreeType = "strong";
+                      }
+                      
+                      const respawnTree = createTree(respawnTreeType);
+                      const respawnTreeX = x * tileSize + tileSize / 2;
+                      const respawnTreeY = randomRow * tileSize + tileSize / 2;
+                      respawnTree.x = respawnTreeX;
+                      respawnTree.y = respawnTreeY;
+                      respawnTree.cullable = true;
+                      treesContainer.addChild(respawnTree);
+                      respawnTile.item = "tree";
+                      respawnTile.tree = respawnTree;
+                      respawnTile.treeType = respawnTreeType;
+                    }
+                  }, config.treeRespawnDelay * 1000);
+                }
+              }
+            );
+          }
+        }
+      }
+    }
+  }
+});
+
+// Vertical line weapon ticker
+app.ticker.add(() => {
+  if (!isRoundActive) {
+    verticalLineTimer = 0;
+    updateVerticalLineIndicator(0, false);
+    return;
+  }
+  
+  const config = playerStateManager.getConfig();
+  if (!config.verticalLineWeaponEnabled) {
+    verticalLineTimer = 0;
+    updateVerticalLineIndicator(0, false);
+    return;
+  }
+  
+  const deltaTime = app.ticker.deltaMS / 1000;
+  verticalLineTimer += deltaTime;
+  
+  const progress = Math.min(1, verticalLineTimer / config.verticalLineWeaponInterval);
+  updateVerticalLineIndicator(progress, true);
+  
+  if (verticalLineTimer >= config.verticalLineWeaponInterval) {
+    verticalLineTimer = 0;
+    updateVerticalLineIndicator(0, true);
+    
+    // Choose a random vertical line (column)
+    const randomCol = Math.floor(Math.random() * mapWidth);
+    
+    // Create line animation
+    const startX = randomCol * tileSize + tileSize / 2;
+    const startY = 0;
+    const endX = startX;
+    const endY = mapHeight * tileSize;
+    createLineAttackAnimation(startX, startY, endX, endY, world, app, 0x00ff88);
+    
+    // Hit all trees on this vertical line
+    for (let y = 0; y < mapHeight; y++) {
+      const tile = tiles[y]?.[randomCol];
+      if (tile && tile.item === "tree" && tile.tree) {
+        const tree = tile.tree;
+        
+        // Check if tree is already destroyed
+        if (!((tree as any).isDestroyed || (tree as any).health <= 0)) {
+          const baseMaxHealth = (tree as any).baseMaxHealth ?? (tree as any).maxHealth ?? 3;
+          const effectiveMaxHealth = baseMaxHealth;
+          (tree as any).maxHealth = effectiveMaxHealth;
+          
+          const currentHealth = (tree as any).health ?? effectiveMaxHealth;
+          const hitDamage = config.verticalLineWeaponPower ?? 1;
+          const newHealth = currentHealth - hitDamage;
+          
+          (tree as any).health = newHealth;
+          
+          // Shake the tree
+          if (!(tree as any).originalX) {
+            (tree as any).originalX = tree.x;
+            (tree as any).originalY = tree.y;
+          }
+          (tree as any).shakeTime = 0;
+          (tree as any).isShaking = true;
+          
+          if (newHealth <= 0) {
+            // Mark tree as destroyed immediately
+            (tree as any).isDestroyed = true;
+            (tree as any).health = 0;
+            
+            // Update tile data immediately
+            tile.item = null;
+            
+            const treeType = (tree as any).treeType as TreeType || "normal";
+            const baseWoodDrop = (tree as any).woodDropCount ?? 3;
+            
+            // Apply wood multiplier
+            let multiplier = 1.0;
+            switch (treeType) {
+              case "normal":
+                multiplier = config.normalWoodMultiplier ?? 1.0;
+                break;
+              case "strong":
+                multiplier = config.strongWoodMultiplier ?? 1.0;
+                break;
+              case "ancient":
+                multiplier = config.ancientWoodMultiplier ?? 1.0;
+                break;
+              case "magical":
+                multiplier = config.magicalWoodMultiplier ?? 1.0;
+                break;
+              case "crystal":
+                multiplier = config.crystalWoodMultiplier ?? 1.0;
+                break;
+              case "legendary":
+                multiplier = config.legendaryWoodMultiplier ?? 1.0;
+                break;
+            }
+            
+            const woodDropCount = Math.max(1, Math.round(baseWoodDrop * multiplier));
+            const tileCenterX = randomCol * tileSize + tileSize / 2;
+            const tileCenterY = y * tileSize + tileSize / 2;
+            
+            // Hide tree immediately
+            tree.visible = false;
+            
+            // Create destruction animation
+            createTreeDestructionAnimation(
+              tree,
+              treeType,
+              world,
+              app,
+              () => {
+                if (treesContainer.children.includes(tree)) {
+                  treesContainer.removeChild(tree);
+                }
+                tree.destroy();
+                tile.tree = undefined;
+                
+                // Animate wood collection
+                animateWoodCollection(
+                  app,
+                  world,
+                  tileCenterX,
+                  tileCenterY,
+                  85,
+                  35,
+                  woodDropCount,
+                  (collectedCount: number) => {
+                    globalWoodCount += collectedCount;
+                    updateWoodCount(globalWoodCount);
+                    updateMenuWoodCount(globalWoodCount);
+                  }
+                );
+                
+                // Handle tree respawn
+                if (config.treeRespawnEnabled) {
+                  setTimeout(() => {
+                    const respawnTile = tiles[y]?.[randomCol];
+                    if (respawnTile && respawnTile.item === null && isRoundActive) {
+                      const respawnConfig = playerStateManager.getConfig();
+                      let respawnTreeType: TreeType = "normal";
+                      const rand = Math.random();
+                      if (respawnConfig.legendaryTreesEnabled && rand < 0.01) {
+                        respawnTreeType = "legendary";
+                      } else if (respawnConfig.crystalTreesEnabled && rand < 0.02) {
+                        respawnTreeType = "crystal";
+                      } else if (respawnConfig.magicalTreesEnabled && rand < 0.03) {
+                        respawnTreeType = "magical";
+                      } else if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
+                        respawnTreeType = "ancient";
+                      } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
+                        respawnTreeType = "strong";
+                      }
+                      
+                      const respawnTree = createTree(respawnTreeType);
+                      const respawnTreeX = randomCol * tileSize + tileSize / 2;
+                      const respawnTreeY = y * tileSize + tileSize / 2;
+                      respawnTree.x = respawnTreeX;
+                      respawnTree.y = respawnTreeY;
+                      respawnTree.cullable = true;
+                      treesContainer.addChild(respawnTree);
+                      respawnTile.item = "tree";
+                      respawnTile.tree = respawnTree;
+                      respawnTile.treeType = respawnTreeType;
+                    }
+                  }, config.treeRespawnDelay * 1000);
+                }
+              }
+            );
+          }
+        }
+      }
+    }
   }
 });
 
@@ -1023,14 +1233,6 @@ app.ticker.add(() => {
                   respawnTile.tree = tree;
                   respawnTile.treeType = treeType;
                   
-                  // Check if new tree should have a bomb
-                  if (respawnConfig.treeBombEnabled) {
-                    const hasBomb = Math.random() < (respawnConfig.treeBombChance ?? 0.01);
-                    if (hasBomb) {
-                      addBombIndicator(tree, world);
-                      respawnTile.hasBomb = true;
-                    }
-                  }
                 }
               }, currentConfig.treeRespawnDelay * 1000);
             }

@@ -37,11 +37,13 @@ export interface PlayerConfig {
   magicalWoodMultiplier: number; // Multiplier for magical tree wood drops
   crystalWoodMultiplier: number; // Multiplier for crystal tree wood drops
   legendaryWoodMultiplier: number; // Multiplier for legendary tree wood drops
-  // Tree bomb
-  treeBombEnabled: boolean; // Whether tree bombs are enabled
-  treeBombChance: number; // Chance for a tree to have a bomb (0-1)
-  treeBombRadius: number; // Radius of bomb explosion in tiles
-  treeBombDamage: number; // Damage dealt by bomb explosion
+  // Line weapons
+  horizontalLineWeaponEnabled: boolean; // Whether horizontal line weapon is enabled
+  horizontalLineWeaponInterval: number; // Interval between horizontal line attacks in seconds
+  horizontalLineWeaponPower: number; // Damage per horizontal line hit
+  verticalLineWeaponEnabled: boolean; // Whether vertical line weapon is enabled
+  verticalLineWeaponInterval: number; // Interval between vertical line attacks in seconds
+  verticalLineWeaponPower: number; // Damage per vertical line hit
 }
 
 /**
@@ -72,11 +74,13 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   magicalWoodMultiplier: 1.0,
   crystalWoodMultiplier: 1.0,
   legendaryWoodMultiplier: 1.0,
-  // Tree bomb
-  treeBombEnabled: false, // Tree bombs disabled by default
-  treeBombChance: 0.01, // 1% chance by default
-  treeBombRadius: 1, // 1 tile radius (3x3 area)
-  treeBombDamage: 1, // 1 damage per explosion
+  // Line weapons
+  horizontalLineWeaponEnabled: false, // Horizontal line weapon disabled by default
+  horizontalLineWeaponInterval: 6.0, // 6 seconds between attacks by default
+  horizontalLineWeaponPower: 1, // 1 damage per hit by default
+  verticalLineWeaponEnabled: false, // Vertical line weapon disabled by default
+  verticalLineWeaponInterval: 6.0, // 6 seconds between attacks by default
+  verticalLineWeaponPower: 1, // 1 damage per hit by default
 };
 
 /**
@@ -151,10 +155,12 @@ export class PlayerStateManager {
       "improve_magical_wood",
       "improve_crystal_wood",
       "improve_legendary_wood",
-      "tree_bomb",
-      "tree_bomb_chance",
-      "tree_bomb_radius",
-      "tree_bomb_power",
+      "horizontal_line_weapon",
+      "horizontal_line_weapon_speed",
+      "horizontal_line_weapon_power",
+      "vertical_line_weapon",
+      "vertical_line_weapon_speed",
+      "vertical_line_weapon_power",
     ];
     
     for (const improvementId of improvementOrder) {
@@ -169,7 +175,7 @@ export class PlayerStateManager {
             // Apply effect with total level (effect will handle incremental changes)
             // For effects that need incremental application, we apply multiple times
             // For effects that calculate from total level, we apply once with total level
-            const needsIncremental = ["larger_cursor", "faster_swing", "more_trees", "stronger_hit", "flashlight_speed", "flashlight_count", "flashlight_power", "improve_normal_wood", "improve_strong_wood", "improve_ancient_wood", "improve_magical_wood", "improve_crystal_wood", "improve_legendary_wood", "tree_bomb_chance", "tree_bomb_radius", "tree_bomb_power"];
+            const needsIncremental = ["larger_cursor", "faster_swing", "more_trees", "stronger_hit", "flashlight_speed", "flashlight_count", "flashlight_power", "improve_normal_wood", "improve_strong_wood", "improve_ancient_wood", "improve_magical_wood", "improve_crystal_wood", "improve_legendary_wood", "horizontal_line_weapon_speed", "horizontal_line_weapon_power", "vertical_line_weapon_speed", "vertical_line_weapon_power"];
             if (needsIncremental.includes(improvementId)) {
               // Apply incrementally
               for (let i = 1; i <= level; i++) {

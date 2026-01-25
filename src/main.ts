@@ -236,22 +236,17 @@ const mouseDestructionState = setupMouseTreeDestruction(
         if (tile && tile.item === null && isRoundActive) {
           // Get current config again (in case it changed)
           const currentConfig = playerStateManager.getConfig();
-          // Choose tree type based on enabled types (weighted random)
-          let treeType: TreeType = "normal";
-          const rand = Math.random();
-          if (currentConfig.legendaryTreesEnabled && rand < 0.01) {
-            treeType = "legendary";
-          } else if (currentConfig.crystalTreesEnabled && rand < 0.02) {
-            treeType = "crystal";
-          } else if (currentConfig.magicalTreesEnabled && rand < 0.03) {
-            treeType = "magical";
-          } else if (currentConfig.ancientTreesEnabled && rand < 0.05) {
-            treeType = "ancient";
-          } else if (currentConfig.strongTreesEnabled && rand < 0.30) {
-            treeType = "strong";
-          } else {
-            treeType = "normal";
-          }
+          // Choose tree type based on enabled types (equal probability)
+          const enabledTypes: TreeType[] = ["normal"]; // Normal is always enabled
+          if (currentConfig.strongTreesEnabled) enabledTypes.push("strong");
+          if (currentConfig.ancientTreesEnabled) enabledTypes.push("ancient");
+          if (currentConfig.magicalTreesEnabled) enabledTypes.push("magical");
+          if (currentConfig.crystalTreesEnabled) enabledTypes.push("crystal");
+          if (currentConfig.legendaryTreesEnabled) enabledTypes.push("legendary");
+          
+          // Randomly select from enabled types with equal probability
+          const randomIndex = Math.floor(Math.random() * enabledTypes.length);
+          const treeType = enabledTypes[randomIndex];
           
           const tree = createTree(treeType);
           const treeX = tileX * tileSize + tileSize / 2;
@@ -562,30 +557,30 @@ app.ticker.add(() => {
             const treeType = (targetTree as any).treeType as TreeType || "normal";
             const baseWoodDrop = (targetTree as any).woodDropCount ?? 3;
             
-            // Apply wood multiplier based on tree type
-            let multiplier = 1.0;
+            // Apply wood bonus based on tree type
+            let bonus = 0;
             switch (treeType) {
               case "normal":
-                multiplier = currentConfig.normalWoodMultiplier ?? 1.0;
+                bonus = currentConfig.normalWoodBonus ?? 0;
                 break;
               case "strong":
-                multiplier = currentConfig.strongWoodMultiplier ?? 1.0;
+                bonus = currentConfig.strongWoodBonus ?? 0;
                 break;
               case "ancient":
-                multiplier = currentConfig.ancientWoodMultiplier ?? 1.0;
+                bonus = currentConfig.ancientWoodBonus ?? 0;
                 break;
               case "magical":
-                multiplier = currentConfig.magicalWoodMultiplier ?? 1.0;
+                bonus = currentConfig.magicalWoodBonus ?? 0;
                 break;
               case "crystal":
-                multiplier = currentConfig.crystalWoodMultiplier ?? 1.0;
+                bonus = currentConfig.crystalWoodBonus ?? 0;
                 break;
               case "legendary":
-                multiplier = currentConfig.legendaryWoodMultiplier ?? 1.0;
+                bonus = currentConfig.legendaryWoodBonus ?? 0;
                 break;
             }
             
-            const woodDropCount = Math.max(1, Math.round(baseWoodDrop * multiplier));
+            const woodDropCount = Math.max(1, baseWoodDrop + bonus);
             const tileCenterX = tileX * tileSize + tileSize / 2;
             const tileCenterY = tileY * tileSize + tileSize / 2;
 
@@ -631,19 +626,14 @@ app.ticker.add(() => {
                     const respawnTile = tiles[tileY]?.[tileX];
                     if (respawnTile && respawnTile.item === null && isRoundActive) {
                       const respawnConfig = playerStateManager.getConfig();
-                      let treeType: TreeType = "normal";
-                      const rand = Math.random();
-                      if (respawnConfig.legendaryTreesEnabled && rand < 0.01) {
-                        treeType = "legendary";
-                      } else if (respawnConfig.crystalTreesEnabled && rand < 0.02) {
-                        treeType = "crystal";
-                      } else if (respawnConfig.magicalTreesEnabled && rand < 0.03) {
-                        treeType = "magical";
-                      } else if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
-                        treeType = "ancient";
-                      } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
-                        treeType = "strong";
-                      }
+                      const enabledTypes: TreeType[] = ["normal"];
+                      if (respawnConfig.strongTreesEnabled) enabledTypes.push("strong");
+                      if (respawnConfig.ancientTreesEnabled) enabledTypes.push("ancient");
+                      if (respawnConfig.magicalTreesEnabled) enabledTypes.push("magical");
+                      if (respawnConfig.crystalTreesEnabled) enabledTypes.push("crystal");
+                      if (respawnConfig.legendaryTreesEnabled) enabledTypes.push("legendary");
+                      const randomIndex = Math.floor(Math.random() * enabledTypes.length);
+                      const treeType = enabledTypes[randomIndex];
                       
                       const tree = createTree(treeType);
                       const treeX = tileX * tileSize + tileSize / 2;
@@ -869,30 +859,30 @@ app.ticker.add(() => {
             const treeType = (tree as any).treeType as TreeType || "normal";
             const baseWoodDrop = (tree as any).woodDropCount ?? 3;
             
-            // Apply wood multiplier
-            let multiplier = 1.0;
+            // Apply wood bonus
+            let bonus = 0;
             switch (treeType) {
               case "normal":
-                multiplier = config.normalWoodMultiplier ?? 1.0;
+                bonus = config.normalWoodBonus ?? 0;
                 break;
               case "strong":
-                multiplier = config.strongWoodMultiplier ?? 1.0;
+                bonus = config.strongWoodBonus ?? 0;
                 break;
               case "ancient":
-                multiplier = config.ancientWoodMultiplier ?? 1.0;
+                bonus = config.ancientWoodBonus ?? 0;
                 break;
               case "magical":
-                multiplier = config.magicalWoodMultiplier ?? 1.0;
+                bonus = config.magicalWoodBonus ?? 0;
                 break;
               case "crystal":
-                multiplier = config.crystalWoodMultiplier ?? 1.0;
+                bonus = config.crystalWoodBonus ?? 0;
                 break;
               case "legendary":
-                multiplier = config.legendaryWoodMultiplier ?? 1.0;
+                bonus = config.legendaryWoodBonus ?? 0;
                 break;
             }
             
-            const woodDropCount = Math.max(1, Math.round(baseWoodDrop * multiplier));
+            const woodDropCount = Math.max(1, baseWoodDrop + bonus);
             const tileCenterX = x * tileSize + tileSize / 2;
             const tileCenterY = randomRow * tileSize + tileSize / 2;
             
@@ -1042,30 +1032,30 @@ app.ticker.add(() => {
             const treeType = (tree as any).treeType as TreeType || "normal";
             const baseWoodDrop = (tree as any).woodDropCount ?? 3;
             
-            // Apply wood multiplier
-            let multiplier = 1.0;
+            // Apply wood bonus
+            let bonus = 0;
             switch (treeType) {
               case "normal":
-                multiplier = config.normalWoodMultiplier ?? 1.0;
+                bonus = config.normalWoodBonus ?? 0;
                 break;
               case "strong":
-                multiplier = config.strongWoodMultiplier ?? 1.0;
+                bonus = config.strongWoodBonus ?? 0;
                 break;
               case "ancient":
-                multiplier = config.ancientWoodMultiplier ?? 1.0;
+                bonus = config.ancientWoodBonus ?? 0;
                 break;
               case "magical":
-                multiplier = config.magicalWoodMultiplier ?? 1.0;
+                bonus = config.magicalWoodBonus ?? 0;
                 break;
               case "crystal":
-                multiplier = config.crystalWoodMultiplier ?? 1.0;
+                bonus = config.crystalWoodBonus ?? 0;
                 break;
               case "legendary":
-                multiplier = config.legendaryWoodMultiplier ?? 1.0;
+                bonus = config.legendaryWoodBonus ?? 0;
                 break;
             }
             
-            const woodDropCount = Math.max(1, Math.round(baseWoodDrop * multiplier));
+            const woodDropCount = Math.max(1, baseWoodDrop + bonus);
             const tileCenterX = randomCol * tileSize + tileSize / 2;
             const tileCenterY = y * tileSize + tileSize / 2;
             
@@ -1205,20 +1195,15 @@ app.ticker.add(() => {
               setTimeout(() => {
                 const respawnTile = tiles[tileY]?.[tileX];
                 if (respawnTile && respawnTile.item === null && isRoundActive) {
-                  const respawnConfig = playerStateManager.getConfig();
-                  let treeType: TreeType = "normal";
-                  const rand = Math.random();
-                  if (respawnConfig.legendaryTreesEnabled && rand < 0.01) {
-                    treeType = "legendary";
-                  } else if (respawnConfig.crystalTreesEnabled && rand < 0.02) {
-                    treeType = "crystal";
-                  } else if (respawnConfig.magicalTreesEnabled && rand < 0.03) {
-                    treeType = "magical";
-                  } else if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
-                    treeType = "ancient";
-                  } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
-                    treeType = "strong";
-                  }
+                    const respawnConfig = playerStateManager.getConfig();
+                    const enabledTypes: TreeType[] = ["normal"];
+                    if (respawnConfig.strongTreesEnabled) enabledTypes.push("strong");
+                    if (respawnConfig.ancientTreesEnabled) enabledTypes.push("ancient");
+                    if (respawnConfig.magicalTreesEnabled) enabledTypes.push("magical");
+                    if (respawnConfig.crystalTreesEnabled) enabledTypes.push("crystal");
+                    if (respawnConfig.legendaryTreesEnabled) enabledTypes.push("legendary");
+                    const randomIndex = Math.floor(Math.random() * enabledTypes.length);
+                    const treeType = enabledTypes[randomIndex];
                   
                   const tree = createTree(treeType);
                   const treeX = tileX * tileSize + tileSize / 2;

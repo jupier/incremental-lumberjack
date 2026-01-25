@@ -68,30 +68,17 @@ export function createMap(config: MapConfig): {
       
       // Place trees randomly across the map
       if (Math.random() < TREE_DENSITY) {
-        // Choose tree type based on enabled types
-        const enabledTypes: TreeType[] = ["normal"];
-        if (config.strongTreesEnabled) enabledTypes.push("strong");
-        if (config.ancientTreesEnabled) enabledTypes.push("ancient");
-        if (config.magicalTreesEnabled) enabledTypes.push("magical");
-        if (config.crystalTreesEnabled) enabledTypes.push("crystal");
-        if (config.legendaryTreesEnabled) enabledTypes.push("legendary");
+        // Equal probability selection for all enabled tree types
+        const availableTreeTypes: TreeType[] = ["normal"]; // Normal is always enabled
+        if (config.strongTreesEnabled) availableTreeTypes.push("strong");
+        if (config.ancientTreesEnabled) availableTreeTypes.push("ancient");
+        if (config.magicalTreesEnabled) availableTreeTypes.push("magical");
+        if (config.crystalTreesEnabled) availableTreeTypes.push("crystal");
+        if (config.legendaryTreesEnabled) availableTreeTypes.push("legendary");
         
-        // Weighted random selection with new tree types
-        let treeType: TreeType = "normal";
-        const rand = Math.random();
-        if (config.legendaryTreesEnabled && rand < 0.01) {
-          treeType = "legendary";
-        } else if (config.crystalTreesEnabled && rand < 0.02) {
-          treeType = "crystal";
-        } else if (config.magicalTreesEnabled && rand < 0.03) {
-          treeType = "magical";
-        } else if (config.ancientTreesEnabled && rand < 0.05) {
-          treeType = "ancient";
-        } else if (config.strongTreesEnabled && rand < 0.30) {
-          treeType = "strong";
-        } else {
-          treeType = "normal";
-        }
+        // Randomly select from enabled types with equal probability
+        const randomIndex = Math.floor(Math.random() * availableTreeTypes.length);
+        const treeType = availableTreeTypes[randomIndex];
         
         const tree = createTree(treeType);
         const treeX = x * tileSize + tileSize / 2;
@@ -143,22 +130,17 @@ export function addTreesToMap(
       const tile = tiles[y]?.[x];
       // Only add trees to empty tiles
       if (tile && tile.item === null && Math.random() < treeDensity) {
-        // Choose tree type based on enabled types (weighted random)
-        let treeType: TreeType = "normal";
-        const rand = Math.random();
-        if (legendaryTreesEnabled && rand < 0.01) {
-          treeType = "legendary";
-        } else if (crystalTreesEnabled && rand < 0.02) {
-          treeType = "crystal";
-        } else if (magicalTreesEnabled && rand < 0.03) {
-          treeType = "magical";
-        } else if (ancientTreesEnabled && rand < 0.05) {
-          treeType = "ancient";
-        } else if (strongTreesEnabled && rand < 0.30) {
-          treeType = "strong";
-        } else {
-          treeType = "normal";
-        }
+        // Equal probability selection for all enabled tree types
+        const availableTreeTypes: TreeType[] = ["normal"]; // Normal is always enabled
+        if (strongTreesEnabled) availableTreeTypes.push("strong");
+        if (ancientTreesEnabled) availableTreeTypes.push("ancient");
+        if (magicalTreesEnabled) availableTreeTypes.push("magical");
+        if (crystalTreesEnabled) availableTreeTypes.push("crystal");
+        if (legendaryTreesEnabled) availableTreeTypes.push("legendary");
+        
+        // Randomly select from enabled types with equal probability
+        const randomIndex = Math.floor(Math.random() * availableTreeTypes.length);
+        const treeType = availableTreeTypes[randomIndex];
         
         const tree = createTree(treeType);
         const treeX = x * tileSize + tileSize / 2;

@@ -30,13 +30,13 @@ export interface PlayerConfig {
   legendaryTreesEnabled: boolean; // Whether legendary trees can spawn
   // Auto-click
   autoClickEnabled: boolean; // Whether auto-click is active
-  // Wood drop multipliers (per tree type)
-  normalWoodMultiplier: number; // Multiplier for normal tree wood drops
-  strongWoodMultiplier: number; // Multiplier for strong tree wood drops
-  ancientWoodMultiplier: number; // Multiplier for ancient tree wood drops
-  magicalWoodMultiplier: number; // Multiplier for magical tree wood drops
-  crystalWoodMultiplier: number; // Multiplier for crystal tree wood drops
-  legendaryWoodMultiplier: number; // Multiplier for legendary tree wood drops
+  // Wood drop bonuses (per tree type) - flat amount added to base drop
+  normalWoodBonus: number; // Flat bonus added to normal tree wood drops
+  strongWoodBonus: number; // Flat bonus added to strong tree wood drops
+  ancientWoodBonus: number; // Flat bonus added to ancient tree wood drops
+  magicalWoodBonus: number; // Flat bonus added to magical tree wood drops
+  crystalWoodBonus: number; // Flat bonus added to crystal tree wood drops
+  legendaryWoodBonus: number; // Flat bonus added to legendary tree wood drops
   // Line weapons
   horizontalLineWeaponEnabled: boolean; // Whether horizontal line weapon is enabled
   horizontalLineWeaponInterval: number; // Interval between horizontal line attacks in seconds
@@ -67,13 +67,13 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   crystalTreesEnabled: false, // Crystal trees locked by default
   legendaryTreesEnabled: false, // Legendary trees locked by default
   autoClickEnabled: false, // Auto-click disabled by default
-  // Wood drop multipliers (start at 1.0 = 100% of base)
-  normalWoodMultiplier: 1.0,
-  strongWoodMultiplier: 1.0,
-  ancientWoodMultiplier: 1.0,
-  magicalWoodMultiplier: 1.0,
-  crystalWoodMultiplier: 1.0,
-  legendaryWoodMultiplier: 1.0,
+  // Wood drop bonuses (start at 0 = no bonus)
+  normalWoodBonus: 0,
+  strongWoodBonus: 0,
+  ancientWoodBonus: 0,
+  magicalWoodBonus: 0,
+  crystalWoodBonus: 0,
+  legendaryWoodBonus: 0,
   // Line weapons
   horizontalLineWeaponEnabled: false, // Horizontal line weapon disabled by default
   horizontalLineWeaponInterval: 6.0, // 6 seconds between attacks by default

@@ -19,31 +19,31 @@ const TREE_SPECS: Record<
   },
   strong: {
     maxHealth: 6,
-    woodDropCount: 6,
+    woodDropCount: 10, // Increased from 6
     trunkColor: 0x6b3f1f,
     foliageColor: 0x0f6b1f,
   },
   ancient: {
     maxHealth: 10,
-    woodDropCount: 10,
+    woodDropCount: 25, // Increased from 10
     trunkColor: 0x4a2c1a,
     foliageColor: 0x1b4d8a,
   },
   magical: {
     maxHealth: 15,
-    woodDropCount: 15,
+    woodDropCount: 50, // Increased from 15
     trunkColor: 0x6a1b9a,
     foliageColor: 0x9c27b0,
   },
   crystal: {
     maxHealth: 20,
-    woodDropCount: 20,
+    woodDropCount: 100, // Increased from 20
     trunkColor: 0x00bcd4,
     foliageColor: 0x00e5ff,
   },
   legendary: {
     maxHealth: 30,
-    woodDropCount: 30,
+    woodDropCount: 200, // Increased from 30
     trunkColor: 0xffd700,
     foliageColor: 0xffeb3b,
   },

@@ -249,32 +249,32 @@ export function hitTreeAtTile(
         const treeType = (targetTree as any).treeType as TreeType || "normal";
         const baseWoodDrop = (targetTree as any).woodDropCount ?? 3;
         
-        // Apply wood multiplier based on tree type
-        let multiplier = 1.0;
-        if (config) {
-          switch (treeType) {
-            case "normal":
-              multiplier = config.normalWoodMultiplier ?? 1.0;
-              break;
-            case "strong":
-              multiplier = config.strongWoodMultiplier ?? 1.0;
-              break;
-            case "ancient":
-              multiplier = config.ancientWoodMultiplier ?? 1.0;
-              break;
-            case "magical":
-              multiplier = config.magicalWoodMultiplier ?? 1.0;
-              break;
-            case "crystal":
-              multiplier = config.crystalWoodMultiplier ?? 1.0;
-              break;
-            case "legendary":
-              multiplier = config.legendaryWoodMultiplier ?? 1.0;
-              break;
-          }
+      // Apply wood bonus based on tree type
+      let bonus = 0;
+      if (config) {
+        switch (treeType) {
+          case "normal":
+            bonus = config.normalWoodBonus ?? 0;
+            break;
+          case "strong":
+            bonus = config.strongWoodBonus ?? 0;
+            break;
+          case "ancient":
+            bonus = config.ancientWoodBonus ?? 0;
+            break;
+          case "magical":
+            bonus = config.magicalWoodBonus ?? 0;
+            break;
+          case "crystal":
+            bonus = config.crystalWoodBonus ?? 0;
+            break;
+          case "legendary":
+            bonus = config.legendaryWoodBonus ?? 0;
+            break;
         }
-        
-        const woodDropCount = Math.max(1, Math.round(baseWoodDrop * multiplier));
+      }
+      
+      const woodDropCount = Math.max(1, baseWoodDrop + bonus);
         const tileCenterX = tileX * tileSize + tileSize / 2;
         const tileCenterY = tileY * tileSize + tileSize / 2;
         

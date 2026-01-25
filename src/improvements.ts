@@ -67,30 +67,30 @@ export const IMPROVEMENT_EFFECTS: Record<
     autoClickEnabled: true,
   }),
 
-  // Wood drop improvements for each tree type (repeatable, 10% per level, max 3x)
+  // Wood drop improvements for each tree type (repeatable, adds flat amount per level)
   improve_normal_wood: (config: PlayerConfig, _level: number) => ({
     ...config,
-    normalWoodMultiplier: Math.min(3.0, config.normalWoodMultiplier + 0.1), // +10% per level, max 300%
+    normalWoodBonus: config.normalWoodBonus + 2, // +2 pieces per level
   }),
   improve_strong_wood: (config: PlayerConfig, _level: number) => ({
     ...config,
-    strongWoodMultiplier: Math.min(3.0, config.strongWoodMultiplier + 0.1), // +10% per level, max 300%
+    strongWoodBonus: config.strongWoodBonus + 3, // +3 pieces per level
   }),
   improve_ancient_wood: (config: PlayerConfig, _level: number) => ({
     ...config,
-    ancientWoodMultiplier: Math.min(3.0, config.ancientWoodMultiplier + 0.1), // +10% per level, max 300%
+    ancientWoodBonus: config.ancientWoodBonus + 5, // +5 pieces per level
   }),
   improve_magical_wood: (config: PlayerConfig, _level: number) => ({
     ...config,
-    magicalWoodMultiplier: Math.min(3.0, config.magicalWoodMultiplier + 0.1), // +10% per level, max 300%
+    magicalWoodBonus: config.magicalWoodBonus + 8, // +8 pieces per level
   }),
   improve_crystal_wood: (config: PlayerConfig, _level: number) => ({
     ...config,
-    crystalWoodMultiplier: Math.min(3.0, config.crystalWoodMultiplier + 0.1), // +10% per level, max 300%
+    crystalWoodBonus: config.crystalWoodBonus + 12, // +12 pieces per level
   }),
   improve_legendary_wood: (config: PlayerConfig, _level: number) => ({
     ...config,
-    legendaryWoodMultiplier: Math.min(3.0, config.legendaryWoodMultiplier + 0.1), // +10% per level, max 300%
+    legendaryWoodBonus: config.legendaryWoodBonus + 20, // +20 pieces per level
   }),
 
   // Horizontal line weapon improvements

@@ -10,6 +10,9 @@ export interface MapConfig {
   treeDensity?: number; // Probability of a tile having a tree (0-1)
   strongTreesEnabled?: boolean; // Whether strong trees can spawn
   ancientTreesEnabled?: boolean; // Whether ancient trees can spawn
+  magicalTreesEnabled?: boolean; // Whether magical trees can spawn
+  crystalTreesEnabled?: boolean; // Whether crystal trees can spawn
+  legendaryTreesEnabled?: boolean; // Whether legendary trees can spawn
 }
 
 export interface TileData {
@@ -69,11 +72,20 @@ export function createMap(config: MapConfig): {
         const enabledTypes: TreeType[] = ["normal"];
         if (config.strongTreesEnabled) enabledTypes.push("strong");
         if (config.ancientTreesEnabled) enabledTypes.push("ancient");
+        if (config.magicalTreesEnabled) enabledTypes.push("magical");
+        if (config.crystalTreesEnabled) enabledTypes.push("crystal");
+        if (config.legendaryTreesEnabled) enabledTypes.push("legendary");
         
-        // Weighted random selection (normal: 70%, strong: 25%, ancient: 5% if enabled)
+        // Weighted random selection with new tree types
         let treeType: TreeType = "normal";
         const rand = Math.random();
-        if (config.ancientTreesEnabled && rand < 0.05) {
+        if (config.legendaryTreesEnabled && rand < 0.01) {
+          treeType = "legendary";
+        } else if (config.crystalTreesEnabled && rand < 0.02) {
+          treeType = "crystal";
+        } else if (config.magicalTreesEnabled && rand < 0.03) {
+          treeType = "magical";
+        } else if (config.ancientTreesEnabled && rand < 0.05) {
           treeType = "ancient";
         } else if (config.strongTreesEnabled && rand < 0.30) {
           treeType = "strong";
@@ -113,7 +125,10 @@ export function addTreesToMap(
   tileSize: number,
   treeDensity: number,
   strongTreesEnabled: boolean = false,
-  ancientTreesEnabled: boolean = false
+  ancientTreesEnabled: boolean = false,
+  magicalTreesEnabled: boolean = false,
+  crystalTreesEnabled: boolean = false,
+  legendaryTreesEnabled: boolean = false
 ): number {
   let treesAdded = 0;
   
@@ -131,7 +146,13 @@ export function addTreesToMap(
         // Choose tree type based on enabled types (weighted random)
         let treeType: TreeType = "normal";
         const rand = Math.random();
-        if (ancientTreesEnabled && rand < 0.05) {
+        if (legendaryTreesEnabled && rand < 0.01) {
+          treeType = "legendary";
+        } else if (crystalTreesEnabled && rand < 0.02) {
+          treeType = "crystal";
+        } else if (magicalTreesEnabled && rand < 0.03) {
+          treeType = "magical";
+        } else if (ancientTreesEnabled && rand < 0.05) {
           treeType = "ancient";
         } else if (strongTreesEnabled && rand < 0.30) {
           treeType = "strong";

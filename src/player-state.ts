@@ -25,6 +25,11 @@ export interface PlayerConfig {
   // Tree types enabled
   strongTreesEnabled: boolean; // Whether strong trees can spawn
   ancientTreesEnabled: boolean; // Whether ancient trees can spawn
+  magicalTreesEnabled: boolean; // Whether magical trees can spawn
+  crystalTreesEnabled: boolean; // Whether crystal trees can spawn
+  legendaryTreesEnabled: boolean; // Whether legendary trees can spawn
+  // Auto-click
+  autoClickEnabled: boolean; // Whether auto-click is active
 }
 
 /**
@@ -44,6 +49,10 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   flashlightPower: 1, // 1 damage per flashlight hit by default
   strongTreesEnabled: false, // Strong trees locked by default
   ancientTreesEnabled: false, // Ancient trees locked by default
+  magicalTreesEnabled: false, // Magical trees locked by default
+  crystalTreesEnabled: false, // Crystal trees locked by default
+  legendaryTreesEnabled: false, // Legendary trees locked by default
+  autoClickEnabled: false, // Auto-click disabled by default
 };
 
 /**
@@ -103,11 +112,15 @@ export class PlayerStateManager {
       "more_trees",
       "unlock_strong_trees",
       "unlock_ancient_trees",
+      "unlock_magical_trees",
+      "unlock_crystal_trees",
+      "unlock_legendary_trees",
       "tree_respawn",
       "flashlight",
       "flashlight_speed",
       "flashlight_count",
       "flashlight_power",
+      "auto_click",
     ];
     
     for (const improvementId of improvementOrder) {

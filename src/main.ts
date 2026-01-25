@@ -9,7 +9,7 @@ import { createTree, TreeType } from "./tree";
 import { createImprovementsMenu, Improvement } from "./improvements-menu";
 import { PlayerStateManager } from "./player-state";
 import { getAllImprovements, getImprovementNextCost } from "./improvements";
-import { setupMouseTreeDestruction } from "./mouse-tree-destruction";
+import { setupMouseTreeDestruction, createTreeDestructionAnimation, hitTreeAtTile } from "./mouse-tree-destruction";
 import { animateWoodCollection } from "./wood-animation";
 import { setupAxeCursor } from "./axe-cursor";
 
@@ -70,6 +70,9 @@ const { grassContainer, treesContainer, tiles } = createMap({
   treeDensity: initialMapConfig.treeDensity,
   strongTreesEnabled: initialMapConfig.strongTreesEnabled,
   ancientTreesEnabled: initialMapConfig.ancientTreesEnabled,
+  magicalTreesEnabled: initialMapConfig.magicalTreesEnabled,
+  crystalTreesEnabled: initialMapConfig.crystalTreesEnabled,
+  legendaryTreesEnabled: initialMapConfig.legendaryTreesEnabled,
 });
 
 // Enable culling on containers for performance (only render visible tiles)
@@ -162,7 +165,10 @@ const {
             tileSize,
             config.treeDensity,
             config.strongTreesEnabled,
-            config.ancientTreesEnabled
+            config.ancientTreesEnabled,
+            config.magicalTreesEnabled,
+            config.crystalTreesEnabled,
+            config.legendaryTreesEnabled
           );
           console.log(`Added ${treesAdded} new trees to the map`);
         }
@@ -229,7 +235,13 @@ setupMouseTreeDestruction(
           // Choose tree type based on enabled types (weighted random)
           let treeType: TreeType = "normal";
           const rand = Math.random();
-          if (currentConfig.ancientTreesEnabled && rand < 0.05) {
+          if (currentConfig.legendaryTreesEnabled && rand < 0.01) {
+            treeType = "legendary";
+          } else if (currentConfig.crystalTreesEnabled && rand < 0.02) {
+            treeType = "crystal";
+          } else if (currentConfig.magicalTreesEnabled && rand < 0.03) {
+            treeType = "magical";
+          } else if (currentConfig.ancientTreesEnabled && rand < 0.05) {
             treeType = "ancient";
           } else if (currentConfig.strongTreesEnabled && rand < 0.30) {
             treeType = "strong";
@@ -290,7 +302,10 @@ function startRound() {
     tileSize,
     config.treeDensity,
     config.strongTreesEnabled,
-    config.ancientTreesEnabled
+    config.ancientTreesEnabled,
+    config.magicalTreesEnabled,
+    config.crystalTreesEnabled,
+    config.legendaryTreesEnabled
   );
 }
 
@@ -302,11 +317,12 @@ function endRound() {
 // Start first round
 startRound();
 
-// Update tree shake animations
+// Update tree shake animations - more realistic shake with rotation
 app.ticker.add(() => {
-  const shakeIntensity = 8; // Increased from 3 for more noticeable shake
-  const shakeDuration = 0.2; // seconds
-  const shakeCount = 5;
+  const shakeIntensity = 4; // Horizontal shake intensity
+  const shakeDuration = 0.15; // seconds - shorter, snappier shake
+  const shakeCount = 3; // Fewer oscillations for more realistic feel
+  const maxRotation = 0.08; // Maximum rotation in radians (~4.5 degrees)
   const deltaTime = app.ticker.deltaMS / 1000; // Convert to seconds
 
   treesContainer.children.forEach((child) => {
@@ -316,19 +332,25 @@ app.ticker.add(() => {
       const progress = tree.shakeTime / shakeDuration;
 
       if (progress >= 1) {
-        // Animation complete, reset position
+        // Animation complete, reset position and rotation
         tree.x = tree.originalX;
         tree.y = tree.originalY;
+        tree.rotation = 0;
         tree.isShaking = false;
         tree.shakeTime = 0;
       } else {
-        // Calculate shake offset using sine wave
-        const offset =
-          Math.sin(progress * Math.PI * shakeCount) *
-          shakeIntensity *
-          (1 - progress);
-        tree.x = tree.originalX + offset;
-        tree.y = tree.originalY + offset * 0.5; // Slight vertical shake
+        // More realistic shake: horizontal movement with slight vertical bounce
+        // Use exponential decay for natural damping
+        const damping = Math.pow(1 - progress, 1.5);
+        const horizontalOffset = Math.sin(progress * Math.PI * shakeCount) * shakeIntensity * damping;
+        const verticalOffset = Math.abs(Math.sin(progress * Math.PI * shakeCount * 0.5)) * 2 * damping;
+        
+        // Add slight rotation that follows the shake direction
+        const rotation = Math.sin(progress * Math.PI * shakeCount) * maxRotation * damping;
+        
+        tree.x = tree.originalX + horizontalOffset;
+        tree.y = tree.originalY - verticalOffset; // Move up slightly when hit
+        tree.rotation = rotation;
       }
     }
   });
@@ -519,62 +541,201 @@ app.ticker.add(() => {
         (targetTree as any).isShaking = true;
 
         if (newHealth <= 0) {
-          treesContainer.removeChild(targetTree);
-          targetTile.item = null;
-          targetTile.tree = undefined;
-
+          const treeType = (targetTree as any).treeType as TreeType || "normal";
           const woodDropCount = Math.max(1, (targetTree as any).woodDropCount ?? 3);
           const tileCenterX = tileX * tileSize + tileSize / 2;
           const tileCenterY = tileY * tileSize + tileSize / 2;
 
-          // Animate wood collection
-          const targetScreenX = 85;
-          const targetScreenY = 35;
-          animateWoodCollection(
-            app,
+          // Hide tree immediately (before destruction animation)
+          targetTree.visible = false;
+
+          // Create destruction animation
+          createTreeDestructionAnimation(
+            targetTree,
+            treeType,
             world,
-            tileCenterX,
-            tileCenterY,
-            targetScreenX,
-            targetScreenY,
-            woodDropCount,
-            (collectedCount: number) => {
-              globalWoodCount += collectedCount;
-              updateWoodCount(globalWoodCount);
+            app,
+            () => {
+              // After animation completes, remove tree and update tile
+              if (treesContainer.children.includes(targetTree)) {
+                treesContainer.removeChild(targetTree);
+              }
+              targetTree.destroy();
+
+              // Update tile data
+              targetTile.item = null;
+              targetTile.tree = undefined;
+
+              // Animate wood collection
+              const targetScreenX = 85;
+              const targetScreenY = 35;
+              animateWoodCollection(
+                app,
+                world,
+                tileCenterX,
+                tileCenterY,
+                targetScreenX,
+                targetScreenY,
+                woodDropCount,
+                (collectedCount: number) => {
+                  globalWoodCount += collectedCount;
+                  updateWoodCount(globalWoodCount);
+                }
+              );
+
+              // Handle tree respawn
+              if (currentConfig.treeRespawnEnabled) {
+                setTimeout(() => {
+                  const respawnTile = tiles[tileY]?.[tileX];
+                  if (respawnTile && respawnTile.item === null && isRoundActive) {
+                    const respawnConfig = playerStateManager.getConfig();
+                    let treeType: TreeType = "normal";
+                    const rand = Math.random();
+                    if (respawnConfig.legendaryTreesEnabled && rand < 0.01) {
+                      treeType = "legendary";
+                    } else if (respawnConfig.crystalTreesEnabled && rand < 0.02) {
+                      treeType = "crystal";
+                    } else if (respawnConfig.magicalTreesEnabled && rand < 0.03) {
+                      treeType = "magical";
+                    } else if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
+                      treeType = "ancient";
+                    } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
+                      treeType = "strong";
+                    }
+                    
+                    const tree = createTree(treeType);
+                    const treeX = tileX * tileSize + tileSize / 2;
+                    const treeY = tileY * tileSize + tileSize / 2;
+
+                    tree.x = treeX;
+                    tree.y = treeY;
+                    tree.cullable = true;
+                    treesContainer.addChild(tree);
+
+                    respawnTile.item = "tree";
+                    respawnTile.tree = tree;
+                    respawnTile.treeType = treeType;
+                  }
+                }, currentConfig.treeRespawnDelay * 1000);
+              }
             }
           );
-
-          // Handle tree respawn
-          if (currentConfig.treeRespawnEnabled) {
-            setTimeout(() => {
-              const respawnTile = tiles[tileY]?.[tileX];
-              if (respawnTile && respawnTile.item === null && isRoundActive) {
-                const respawnConfig = playerStateManager.getConfig();
-                let treeType: TreeType = "normal";
-                const rand = Math.random();
-                if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
-                  treeType = "ancient";
-                } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
-                  treeType = "strong";
-                }
-                
-                const tree = createTree(treeType);
-                const treeX = tileX * tileSize + tileSize / 2;
-                const treeY = tileY * tileSize + tileSize / 2;
-
-                tree.x = treeX;
-                tree.y = treeY;
-                tree.cullable = true;
-                treesContainer.addChild(tree);
-
-                respawnTile.item = "tree";
-                respawnTile.tree = tree;
-                respawnTile.treeType = treeType;
-              }
-            }, currentConfig.treeRespawnDelay * 1000);
-          }
         }
       }
     });
+  }
+});
+
+// Auto-click system - automatically hits trees
+let autoClickTimer = 0;
+const autoClickInterval = 0.5; // Click every 0.5 seconds
+
+app.ticker.add(() => {
+  if (!isRoundActive) {
+    autoClickTimer = 0;
+    return;
+  }
+  
+  const config = playerStateManager.getConfig();
+  if (!config.autoClickEnabled) {
+    autoClickTimer = 0;
+    return;
+  }
+  
+  const deltaTime = app.ticker.deltaMS / 1000; // Convert to seconds
+  autoClickTimer += deltaTime;
+  
+  if (autoClickTimer >= autoClickInterval) {
+    autoClickTimer = 0;
+    
+    // Find all trees on the map
+    const allTrees: Array<{ tileX: number; tileY: number }> = [];
+    
+    for (let y = 0; y < mapHeight; y++) {
+      for (let x = 0; x < mapWidth; x++) {
+        const tile = tiles[y]?.[x];
+        if (tile && tile.item === "tree" && tile.tree) {
+          allTrees.push({ tileX: x, tileY: y });
+        }
+      }
+    }
+    
+    // Hit a random tree (or multiple if there are many)
+    if (allTrees.length > 0) {
+      // Shuffle and select up to 3 random trees to hit
+      const treesToHit = allTrees
+        .sort(() => Math.random() - 0.5)
+        .slice(0, Math.min(3, allTrees.length));
+      
+      treesToHit.forEach(({ tileX, tileY }) => {
+        hitTreeAtTile(
+          tileX,
+          tileY,
+          tiles,
+          mapWidth,
+          mapHeight,
+          tileSize,
+          treesContainer,
+          app,
+          world,
+          () => playerStateManager.getConfig(),
+          (count: number, worldX: number, worldY: number) => {
+            const targetScreenX = 85;
+            const targetScreenY = 35;
+            animateWoodCollection(
+              app,
+              world,
+              worldX,
+              worldY,
+              targetScreenX,
+              targetScreenY,
+              count,
+              (collectedCount: number) => {
+                globalWoodCount += collectedCount;
+                updateWoodCount(globalWoodCount);
+              }
+            );
+          },
+          (tileX: number, tileY: number) => {
+            // Handle tree respawn
+            const currentConfig = playerStateManager.getConfig();
+            if (currentConfig.treeRespawnEnabled) {
+              setTimeout(() => {
+                const respawnTile = tiles[tileY]?.[tileX];
+                if (respawnTile && respawnTile.item === null && isRoundActive) {
+                  const respawnConfig = playerStateManager.getConfig();
+                  let treeType: TreeType = "normal";
+                  const rand = Math.random();
+                  if (respawnConfig.legendaryTreesEnabled && rand < 0.01) {
+                    treeType = "legendary";
+                  } else if (respawnConfig.crystalTreesEnabled && rand < 0.02) {
+                    treeType = "crystal";
+                  } else if (respawnConfig.magicalTreesEnabled && rand < 0.03) {
+                    treeType = "magical";
+                  } else if (respawnConfig.ancientTreesEnabled && rand < 0.05) {
+                    treeType = "ancient";
+                  } else if (respawnConfig.strongTreesEnabled && rand < 0.30) {
+                    treeType = "strong";
+                  }
+                  
+                  const tree = createTree(treeType);
+                  const treeX = tileX * tileSize + tileSize / 2;
+                  const treeY = tileY * tileSize + tileSize / 2;
+
+                  tree.x = treeX;
+                  tree.y = treeY;
+                  tree.cullable = true;
+                  treesContainer.addChild(tree);
+
+                  respawnTile.item = "tree";
+                  respawnTile.tree = tree;
+                  respawnTile.treeType = treeType;
+                }
+              }, currentConfig.treeRespawnDelay * 1000);
+            }
+          }
+        );
+      });
+    }
   }
 });

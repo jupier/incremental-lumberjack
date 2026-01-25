@@ -47,6 +47,26 @@ export const IMPROVEMENT_EFFECTS: Record<
     ancientTreesEnabled: true,
   }),
   
+  // New tree type unlocks
+  unlock_magical_trees: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    magicalTreesEnabled: true,
+  }),
+  unlock_crystal_trees: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    crystalTreesEnabled: true,
+  }),
+  unlock_legendary_trees: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    legendaryTreesEnabled: true,
+  }),
+  
+  // Auto-click unlock
+  auto_click: (config: PlayerConfig, _level: number) => ({
+    ...config,
+    autoClickEnabled: true,
+  }),
+  
   // Tree respawn (repeatable, leveled)
   tree_respawn: (config: PlayerConfig, level: number) => {
     // First level enables respawn, subsequent levels reduce delay
@@ -167,6 +187,44 @@ export const IMPROVEMENTS_DATA: Record<
     category: "map",
     tier: 4,
     requires: "unlock_strong_trees",
+  },
+  unlock_magical_trees: {
+    id: "unlock_magical_trees",
+    name: "Magical Trees",
+    description: "Unlocks magical trees (15 health, 15 wood)",
+    baseCost: 100,
+    category: "map",
+    tier: 5,
+    requires: "unlock_ancient_trees",
+  },
+  unlock_crystal_trees: {
+    id: "unlock_crystal_trees",
+    name: "Crystal Trees",
+    description: "Unlocks crystal trees (20 health, 20 wood)",
+    baseCost: 200,
+    category: "map",
+    tier: 6,
+    requires: "unlock_magical_trees",
+  },
+  unlock_legendary_trees: {
+    id: "unlock_legendary_trees",
+    name: "Legendary Trees",
+    description: "Unlocks legendary trees (30 health, 30 wood)",
+    baseCost: 500,
+    category: "map",
+    tier: 7,
+    requires: "unlock_crystal_trees",
+  },
+  
+  // Auto-click unlock
+  auto_click: {
+    id: "auto_click",
+    name: "Auto Click",
+    description: "Automatically clicks trees for you (1000 wood)",
+    baseCost: 1000,
+    category: "cursor",
+    tier: 5,
+    requires: "flashlight",
   },
   
   // Tree respawn (repeatable, leveled)

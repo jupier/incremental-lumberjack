@@ -102,25 +102,7 @@ export function createImprovementsMenu(
   `;
   modalContent.appendChild(title);
 
-  // Create close button
-  const closeBtn = document.createElement("button");
-  closeBtn.textContent = "×";
-  closeBtn.style.cssText = `
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: none;
-    border: none;
-    color: white;
-    font-size: 32px;
-    cursor: pointer;
-    width: 40px;
-    height: 40px;
-    line-height: 40px;
-    padding: 0;
-  `;
-  closeBtn.onclick = () => hide();
-  modalContent.appendChild(closeBtn);
+  // Close button removed - menu can only be closed via Start Round button
 
   // Create tree container
   const treeContainer = document.createElement("div");
@@ -167,20 +149,14 @@ export function createImprovementsMenu(
   modal.appendChild(modalContent);
   document.body.appendChild(modal);
 
-  // Close on background click
+  // Prevent closing on background click - menu can only be closed via Start Round button
   modal.onclick = (e) => {
-    if (e.target === modal) {
-      hide();
-    }
+    // Prevent closing - do nothing
+    e.stopPropagation();
   };
 
-  // Close on Escape key
-  const handleEscape = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && modal.style.display !== "none") {
-      hide();
-    }
-  };
-  window.addEventListener("keydown", handleEscape);
+  // Prevent closing on Escape key - menu can only be closed via Start Round button
+  // (No escape handler needed)
 
   // Build tree data structure from all improvements with a common root
   function buildTreeData(
@@ -462,7 +438,6 @@ export function createImprovementsMenu(
   }
 
   function destroy() {
-    window.removeEventListener("keydown", handleEscape);
     if (document.body.contains(modal)) {
       document.body.removeChild(modal);
     }

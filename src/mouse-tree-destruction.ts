@@ -1,6 +1,7 @@
 import { Application, Container, Graphics } from "pixi.js";
 import { TileData } from "./map";
 import { PlayerConfig } from "./player-state";
+import { TreeType } from "./tree";
 
 function shakeTree(tree: Graphics): void {
   // Store original position if not already stored
@@ -15,6 +16,164 @@ function shakeTree(tree: Graphics): void {
 }
 
 /**
+ * Create destruction animation for a tree - splits into pieces
+ */
+export function createTreeDestructionAnimation(
+  tree: Graphics,
+  treeType: TreeType,
+  world: Container,
+  app: Application,
+  onComplete: () => void
+): void {
+  const treeX = tree.x;
+  const treeY = tree.y;
+  const pieces: Array<{
+    graphics: Graphics;
+    vx: number;
+    vy: number;
+    rotationSpeed: number;
+    gravity: number;
+  }> = [];
+
+  // Get tree colors
+  const trunkColor = 
+    treeType === "legendary" ? 0xffd700 :
+    treeType === "crystal" ? 0x00bcd4 :
+    treeType === "magical" ? 0x6a1b9a :
+    treeType === "ancient" ? 0x4a2c1a :
+    treeType === "strong" ? 0x6b3f1f : 0x8b4513;
+  const foliageColor = 
+    treeType === "legendary" ? 0xffeb3b :
+    treeType === "crystal" ? 0x00e5ff :
+    treeType === "magical" ? 0x9c27b0 :
+    treeType === "ancient" ? 0x1b4d8a :
+    treeType === "strong" ? 0x0f6b1f : 0x228b22;
+
+  // Create trunk pieces (2-4 pieces depending on tree type)
+  const trunkPieceCount = 
+    treeType === "legendary" ? 4 :
+    treeType === "crystal" ? 4 :
+    treeType === "magical" ? 3 :
+    treeType === "ancient" ? 3 :
+    treeType === "strong" ? 2 : 2;
+  const trunkHeight = 
+    treeType === "legendary" ? 36 :
+    treeType === "crystal" ? 34 :
+    treeType === "magical" ? 34 :
+    treeType === "ancient" ? 32 :
+    treeType === "strong" ? 31 : 30;
+  const trunkWidth = 
+    treeType === "legendary" ? 20 :
+    treeType === "crystal" ? 18 :
+    treeType === "magical" ? 18 :
+    treeType === "ancient" ? 16 :
+    treeType === "strong" ? 14 : 12;
+  const pieceHeight = trunkHeight / trunkPieceCount;
+
+  for (let i = 0; i < trunkPieceCount; i++) {
+    const piece = new Graphics();
+    piece.rect(-trunkWidth / 2, -pieceHeight / 2, trunkWidth, pieceHeight);
+    piece.fill(trunkColor);
+    piece.x = treeX;
+    piece.y = treeY - trunkHeight / 2 + (i + 0.5) * pieceHeight;
+    piece.rotation = (Math.random() - 0.5) * 0.3; // Random initial rotation
+    
+    // Random velocity for scattering
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 30 + Math.random() * 40;
+    pieces.push({
+      graphics: piece,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 20, // Slight upward initial velocity
+      rotationSpeed: (Math.random() - 0.5) * 0.3,
+      gravity: 200 + Math.random() * 100,
+    });
+    world.addChild(piece);
+  }
+
+  // Create foliage pieces (2-6 pieces depending on tree type)
+  const foliagePieceCount = 
+    treeType === "legendary" ? 6 :
+    treeType === "crystal" ? 5 :
+    treeType === "magical" ? 5 :
+    treeType === "ancient" ? 4 :
+    treeType === "strong" ? 3 : 2;
+  const foliageRadius = 
+    treeType === "legendary" ? 30 :
+    treeType === "crystal" ? 28 :
+    treeType === "magical" ? 26 :
+    treeType === "ancient" ? 24 :
+    treeType === "strong" ? 18 : 20;
+
+  for (let i = 0; i < foliagePieceCount; i++) {
+    const piece = new Graphics();
+    const pieceRadius = foliageRadius * (0.4 + Math.random() * 0.3);
+    piece.circle(0, 0, pieceRadius);
+    piece.fill(foliageColor);
+    piece.x = treeX + (Math.random() - 0.5) * 20;
+    const foliageYOffset = 
+      treeType === "legendary" ? 30 :
+      treeType === "crystal" ? 28 :
+      treeType === "magical" ? 26 :
+      treeType === "ancient" ? 24 :
+      treeType === "strong" ? 20 : 20;
+    piece.y = treeY - foliageYOffset + (Math.random() - 0.5) * 10;
+    piece.rotation = Math.random() * Math.PI * 2;
+    
+    // Random velocity for scattering
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 40 + Math.random() * 50;
+    pieces.push({
+      graphics: piece,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 30, // More upward for foliage
+      rotationSpeed: (Math.random() - 0.5) * 0.4,
+      gravity: 150 + Math.random() * 100,
+    });
+    world.addChild(piece);
+  }
+
+  // Animate pieces falling
+  let animationTime = 0;
+  const animationDuration = 0.6; // 600ms animation
+
+  const ticker = () => {
+    animationTime += app.ticker.deltaMS / 1000;
+    const progress = animationTime / animationDuration;
+
+    if (progress >= 1) {
+      // Animation complete - remove all pieces
+      pieces.forEach(({ graphics }) => {
+        if (world.children.includes(graphics)) {
+          world.removeChild(graphics);
+        }
+        graphics.destroy();
+      });
+      app.ticker.remove(ticker);
+      onComplete();
+    } else {
+      // Update piece positions
+      pieces.forEach((piece) => {
+        // Apply gravity
+        piece.vy += piece.gravity * (app.ticker.deltaMS / 1000);
+        
+        // Update position
+        piece.graphics.x += piece.vx * (app.ticker.deltaMS / 1000);
+        piece.graphics.y += piece.vy * (app.ticker.deltaMS / 1000);
+        
+        // Update rotation
+        piece.graphics.rotation += piece.rotationSpeed * (app.ticker.deltaMS / 1000);
+        
+        // Fade out as pieces fall
+        piece.graphics.alpha = 1 - progress * 0.7; // Fade to 30% opacity
+      });
+    }
+  };
+
+  app.ticker.add(ticker);
+}
+
+/**
  * Hit a tree at the specified tile coordinates
  */
 export function hitTreeAtTile(
@@ -25,6 +184,8 @@ export function hitTreeAtTile(
   mapHeight: number,
   tileSize: number,
   treesContainer: Container,
+  app?: Application,
+  world?: Container,
   getConfig?: () => PlayerConfig,
   onWoodCollected?: (count: number, worldX: number, worldY: number) => void,
   onTreeCut?: (tileX: number, tileY: number) => void
@@ -71,26 +232,57 @@ export function hitTreeAtTile(
 
     // Check if tree health reached 0
     if (newHealth <= 0) {
-      // Remove tree from container
-      treesContainer.removeChild(targetTree);
-
-      // Update tile data (no wood on ground, it's automatically collected)
-      tile.item = null;
-      tile.tree = undefined;
-
+      const treeType = (targetTree as any).treeType as TreeType || "normal";
       const woodDropCount = Math.max(1, (targetTree as any).woodDropCount ?? 3);
-      // Calculate tile center in world coordinates
       const tileCenterX = tileX * tileSize + tileSize / 2;
       const tileCenterY = tileY * tileSize + tileSize / 2;
 
-      // Notify that a tree was cut (for respawn system)
-      if (onTreeCut) {
-        onTreeCut(tileX, tileY);
-      }
+      // Hide tree immediately (before destruction animation)
+      targetTree.visible = false;
 
-      // Automatically collect wood (trigger animation)
-      if (onWoodCollected) {
-        onWoodCollected(woodDropCount, tileCenterX, tileCenterY);
+      // Create destruction animation if app and world are provided
+      if (app && world) {
+        createTreeDestructionAnimation(
+          targetTree,
+          treeType,
+          world,
+          app,
+          () => {
+            // After animation completes, remove tree and update tile
+            if (treesContainer.children.includes(targetTree)) {
+              treesContainer.removeChild(targetTree);
+            }
+            targetTree.destroy();
+
+            // Update tile data
+            tile.item = null;
+            tile.tree = undefined;
+
+            // Notify that a tree was cut (for respawn system)
+            if (onTreeCut) {
+              onTreeCut(tileX, tileY);
+            }
+
+            // Automatically collect wood (trigger animation)
+            if (onWoodCollected) {
+              onWoodCollected(woodDropCount, tileCenterX, tileCenterY);
+            }
+          }
+        );
+      } else {
+        // Fallback: remove immediately if no animation support
+        treesContainer.removeChild(targetTree);
+        targetTree.destroy();
+        tile.item = null;
+        tile.tree = undefined;
+
+        if (onTreeCut) {
+          onTreeCut(tileX, tileY);
+        }
+
+        if (onWoodCollected) {
+          onWoodCollected(woodDropCount, tileCenterX, tileCenterY);
+        }
       }
     }
   }
@@ -245,6 +437,8 @@ export function setupMouseTreeDestruction(
             mapHeight,
             tileSize,
             treesContainer,
+            app,
+            world,
             getConfig,
             onWoodCollected || undefined,
             onTreeCut
@@ -304,6 +498,8 @@ export function setupMouseTreeDestruction(
               mapHeight,
               tileSize,
               treesContainer,
+              app,
+              world,
               getConfig,
               onWoodCollected || undefined,
               onTreeCut
